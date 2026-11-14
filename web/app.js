@@ -488,11 +488,16 @@ function renderPublishers() {
   }));
 }
 
+function setSourceStatus(state, description) {
+  const badge = $('live-status');
+  badge.dataset.state = state;
+  badge.title = description;
+  badge.firstElementChild.textContent = description;
+}
+
 async function refresh() {
   $('refresh').disabled = true;
-  const badge = $('live-status');
-  badge.dataset.state = '';
-  badge.lastElementChild.textContent = 'Connecting';
+  setSourceStatus('waiting', 'Updating market and news data');
   const tasks = [
     ['quotes', getQuotes, (quotes) => { state.quotes = quotes; renderQuotes(); renderWatchlist(); }],
     ['news', getStories, () => renderHeadlineData(true)],
@@ -515,8 +520,9 @@ async function refresh() {
     }
   }));
   const active = Object.values(state.sources).filter(Boolean).length;
-  badge.dataset.state = active === tasks.length ? 'live' : active ? 'partial' : 'offline';
-  badge.lastElementChild.textContent = active === tasks.length ? 'Live sources' : active ? 'Partial feed' : 'Sources offline';
+  if (active === tasks.length) setSourceStatus('live', 'Market and news sources online');
+  else if (active) setSourceStatus('partial', 'Some data sources are unavailable');
+  else setSourceStatus('offline', 'Market and news sources offline');
   $('refresh').disabled = false;
 }
 
@@ -823,8 +829,8 @@ async function changePage() {
   const style = getComputedStyle(main);
   const start = { opacity: style.opacity, transform: style.transform };
   enteringPage?.cancel();
-  const exit = main.animate([start, { opacity: 0, transform: 'translateY(-5px)' }], {
-    duration: 145, easing: 'cubic-bezier(.4, 0, .7, 1)', fill: 'both',
+  const exit = main.animate([start, { opacity: .48, transform: 'translateY(-2px)' }], {
+    duration: 105, easing: 'ease-in-out', fill: 'both',
   });
   leavingPage = exit;
   await exit.finished.catch(() => {});
@@ -837,9 +843,9 @@ async function changePage() {
   exit.cancel();
   if (reducedMotion.matches) return;
   const entrance = main.animate([
-    { opacity: 0, transform: `translateY(${switched ? 9 : -5}px)` },
+    { opacity: .48, transform: `translateY(${switched ? 4 : -2}px)` },
     { opacity: 1, transform: 'none' },
-  ], { duration: 355, easing: 'cubic-bezier(.16, 1, .3, 1)' });
+  ], { duration: 265, easing: 'cubic-bezier(.16, 1, .3, 1)' });
   enteringPage = entrance;
   await entrance.finished.catch(() => {});
   if (enteringPage === entrance) enteringPage = undefined;

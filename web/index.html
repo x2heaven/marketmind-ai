@@ -22,8 +22,9 @@
       <p id="boot-status">Connecting to market data…</p>
     </div>
   </div>
-  <div class="shell" id="app-shell">
-    <header class="topbar">
+  <div id="app-shell">
+    <header class="site-header">
+      <div class="shell topbar">
       <a class="brand" href="#" aria-label="MarketMind AI dashboard">
         <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
         <span>MarketMind <strong>AI</strong></span>
@@ -38,13 +39,14 @@
         <a href="#database" id="admin-link" hidden>Database</a>
       </nav>
       <div class="live-tools">
-        <span class="live-status" id="live-status" role="status"><i></i><span>Connecting</span></span>
-        <button class="refresh" id="refresh" type="button" aria-label="Refresh market and news data" title="Refresh data">↻</button>
+        <span class="live-status" id="live-status" data-state="waiting" role="status" title="Connecting to data sources"><span class="sr-only">Connecting to data sources</span></span>
+        <button class="refresh" id="refresh" type="button" aria-label="Refresh market and news data" title="Refresh data"><span aria-hidden="true">↻</span></button>
       </div>
       <button class="button search-trigger" id="open-analysis" type="button"><span aria-hidden="true">✦</span> Analyze headline</button>
       <button class="button" id="open-account" type="button" hidden>Sign in</button>
+      </div>
     </header>
-    <main id="page-content" tabindex="-1" aria-labelledby="page-title">
+    <main class="shell" id="page-content" tabindex="-1" aria-labelledby="page-title">
       <div class="page-heading"><div><h1 id="page-title">Market overview</h1><p id="page-subtitle">Crypto prices, news, and market sentiment in one place.</p></div>
         <div class="segmented" id="timeframes" aria-label="News timeframe"><button type="button" data-hours="24" aria-pressed="true">24 hours</button><button type="button" data-hours="168" aria-pressed="false">7 days</button></div>
       </div>
