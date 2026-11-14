@@ -360,6 +360,9 @@ dialog[open]::backdrop { opacity: 1; }
 
 .shell, .chart-frame { user-select: none; }
 :is(input, textarea), .database-scroll { user-select: text; }
+.bubbles { caret-color: transparent; cursor: default; }
+.bubble { cursor: pointer; }
+.bubble > * { pointer-events: none; }
 .coin-icon img { pointer-events: none; }
 img, .shell a { -webkit-user-drag: none; }
 .topbar { flex-wrap: wrap; }
