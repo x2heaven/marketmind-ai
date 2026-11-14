@@ -66,11 +66,11 @@ function node(tag, className, content) {
   return element;
 }
 
-function reveal(element, offset = 5, duration = 220) {
+function reveal(element, offset = 4, duration = 250) {
   entrances.get(element)?.cancel();
   if (reducedMotion.matches || element.closest('[hidden]')) return;
   entrances.set(element, element.animate([
-    { opacity: .55, translate: `0 ${offset}px` },
+    { opacity: .76, translate: `0 ${offset}px` },
     { opacity: 1, translate: '0 0' },
   ], { duration, easing }));
 }
@@ -673,7 +673,7 @@ const pages = {
   sources: ['News sources', 'See which publisher feeds are reachable and how much they cover.'],
   database: ['Database', 'Inspect the records collected by your local server.'],
 };
-function showPage() {
+function showPage({ nativeTransition = false } = {}) {
   const hash = window.location.hash.slice(1);
   const allowed = hash !== 'database' || localAccount.user?.role === 'admin';
   const page = allowed && Object.hasOwn(pages, hash) ? hash : 'overview';
@@ -699,12 +699,24 @@ function showPage() {
   renderHeadlineData();
   if (page === 'database') loadDatabase();
   window.scrollTo({ top: 0, behavior: 'instant' });
-  if (switching) {
+  if (switching && !nativeTransition) {
     reveal($('page-title'), 6, 260);
     reveal(workspace, 8, 260);
   }
 }
-window.addEventListener('hashchange', showPage);
+let pageTransition;
+window.addEventListener('hashchange', () => {
+  pageTransition?.skipTransition();
+  if (reducedMotion.matches || !document.startViewTransition || document.querySelector('dialog[open]')) {
+    showPage();
+    return;
+  }
+  const transition = document.startViewTransition(() => showPage({ nativeTransition: true }));
+  pageTransition = transition;
+  transition.finished.catch(() => {}).finally(() => {
+    if (pageTransition === transition) pageTransition = undefined;
+  });
+});
 for (const [id, event] of [['news-filter', 'change'], ['source-filter', 'change'], ['news-search', 'input']]) {
   $(id).addEventListener(event, () => {
     state.visible = 6;
@@ -730,8 +742,9 @@ function renderAccount() {
   $('account-form').hidden = Boolean(user);
   $('account-modes').hidden = Boolean(user);
   $('account-actions').hidden = !user;
+  $('account-email-form').hidden = !user || Boolean(user.email);
   $('account-hint').textContent = user
-    ? `Signed in as ${user.username} · ${user.role}`
+    ? [`Signed in as ${user.username}`, user.email, user.role].filter(Boolean).join(' · ')
     : setupRequired ? 'Use Set up admin to unlock the database.' : 'Accounts are stored on this computer.';
   const buttons = $('account-modes').querySelectorAll('button');
   for (const button of buttons) {
@@ -739,7 +752,13 @@ function renderAccount() {
     if (button.dataset.action === 'setup') button.hidden = !setupRequired;
   }
   const setup = mode === 'setup';
+  const creating = mode !== 'login';
+  for (const [field, caption] of [['account-email', 'email-label'], ['account-confirm', 'confirm-label']]) {
+    $(field).hidden = $(field).disabled = $(caption).hidden = !creating;
+    $(field).required = creating;
+  }
   $('setup-code').hidden = !setup;
+  $('setup-code').disabled = !setup;
   $('setup-code').required = setup;
   $('setup-label').hidden = !setup;
   $('account-password').autocomplete = mode === 'login' ? 'current-password' : 'new-password';
@@ -770,6 +789,7 @@ async function accountAction(action, data = {}) {
   }
   renderAccount();
   showPage();
+  if (action === 'email' && state.page === 'database') loadDatabase();
 }
 
 $('open-account').addEventListener('click', () => {
@@ -778,25 +798,47 @@ $('open-account').addEventListener('click', () => {
 });
 $('account-modes').addEventListener('click', (event) => {
   const mode = event.target.closest('[data-action]')?.dataset.action;
-  if (!mode) return;
+  if (!mode || mode === localAccount.mode) return;
   localAccount.mode = mode;
   $('account-result').textContent = '';
   renderAccount();
+  reveal($('account-form'), 3);
 });
 $('account-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
+  if ($('account-submit').disabled) return;
+  const data = Object.fromEntries(new FormData(form));
+  if (localAccount.mode !== 'login' && data.password !== data.confirmPassword) {
+    $('account-result').textContent = 'Passwords do not match.';
+    $('account-confirm').focus();
+    return;
+  }
   $('account-submit').disabled = true;
+  for (const button of $('account-modes').querySelectorAll('button')) button.disabled = true;
   $('account-result').textContent = '';
   try {
-    await accountAction(localAccount.mode, Object.fromEntries(new FormData(form)));
+    await accountAction(localAccount.mode, data);
     form.reset();
     $('account-dialog').close();
   } catch (error) {
     $('account-result').textContent = error.message || 'Could not reach the local server.';
   } finally {
     $('account-submit').disabled = false;
+    for (const button of $('account-modes').querySelectorAll('button')) button.disabled = false;
   }
+});
+$('account-email-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  $('save-email').disabled = true;
+  try {
+    await accountAction('email', Object.fromEntries(new FormData(form)));
+    form.reset();
+    $('account-result').textContent = 'Email saved.';
+  } catch (error) {
+    $('account-result').textContent = error.message || 'Could not save the email.';
+  } finally { $('save-email').disabled = false; }
 });
 $('account-database').addEventListener('click', () => $('account-dialog').close());
 $('sign-out').addEventListener('click', async () => {
@@ -813,15 +855,27 @@ const tableDates = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'medium',
 });
 let databaseRequest = 0;
+const databaseDescriptions = {
+  accounts: 'Account details and registration dates.',
+  headlines: 'Publisher headlines and model labels used in the dashboard.',
+  analyses: 'Quick analysis results saved by signed-in accounts.',
+  quotes: 'Spot prices recorded when the dashboard refreshes.',
+  candles: 'Hourly opening, high, low, and closing prices for viewed coins.',
+};
 async function loadDatabase() {
   const request = ++databaseRequest;
   const status = $('database-status');
   const table = $('database-results');
+  const scroll = $('database-scroll');
   const previous = $('database-prev');
   const next = $('database-next');
   status.textContent = 'Loading records…';
   previous.disabled = next.disabled = true;
-  const params = new URLSearchParams({ table: $('database-table').value, page: localAccount.tablePage });
+  $('reload-database').disabled = true;
+  scroll.setAttribute('aria-busy', 'true');
+  const tableName = $('database-table').value;
+  $('database-description').textContent = databaseDescriptions[tableName];
+  const params = new URLSearchParams({ table: tableName, page: localAccount.tablePage });
   try {
     const response = await fetch(localApi + 'database?' + params);
     const { columns, rows, total, page, pageSize, error } = await response.json();
@@ -840,10 +894,12 @@ async function loadDatabase() {
       const row = node('tr');
       for (const column of columns) {
         const value = record[column];
-        const display = column.endsWith('_at') ? tableDates.format(value)
+        const display = value === null ? '—' : column.endsWith('_at') ? tableDates.format(value)
           : column.endsWith('_usd') ? dollars(value)
           : column === 'confidence' ? `${(value * 100).toFixed(1)}%` : String(value);
-        row.append(node('td', '', display));
+        const cell = node('td', '', display);
+        if (column === 'password_status') cell.className = 'positive';
+        row.append(cell);
       }
       content.append(row);
     }
@@ -856,6 +912,11 @@ async function loadDatabase() {
     if (request !== databaseRequest || localAccount.user?.role !== 'admin') return;
     table.replaceChildren();
     status.textContent = error.message || 'Could not load records.';
+  } finally {
+    if (request === databaseRequest) {
+      $('reload-database').disabled = false;
+      scroll.setAttribute('aria-busy', 'false');
+    }
   }
 }
 
@@ -918,7 +979,7 @@ function finishLoading() {
   $('boot-screen').classList.add('is-ready');
   $('app-shell').inert = false;
 }
-const bootTimeout = setTimeout(finishLoading, 4500);
+const bootTimeout = setTimeout(finishLoading, 950);
 connectAccount().then(refresh).finally(() => {
   clearTimeout(bootTimeout);
   finishLoading();

@@ -106,16 +106,18 @@
           <div id="source-list" class="source-grid"></div>
         </section>
         <section class="panel database-panel" aria-labelledby="database-title" data-pages="database" hidden>
-          <div class="panel-heading"><div><h2 id="database-title">Local database</h2><p>Browse the SQLite tables stored on this computer.</p></div><button class="button" type="button" id="reload-database">Refresh</button></div>
+          <div class="panel-heading"><div><h2 id="database-title">Local database</h2><p id="database-description">Account details and registration dates.</p></div><button class="button" type="button" id="reload-database">Refresh</button></div>
           <div class="database-controls">
             <label class="filter"><span>Table</span> <select id="database-table">
-              <option value="accounts">Accounts</option><option value="headlines">Headlines</option>
-              <option value="quotes">Price snapshots</option><option value="candles">Hourly prices</option>
-              <option value="analyses">Quick analyses</option>
+              <option value="accounts">Accounts</option>
+              <optgroup label="Market data and analysis">
+                <option value="headlines">Scored headlines</option><option value="analyses">Saved analyses</option>
+                <option value="quotes">Price snapshots</option><option value="candles">Hourly prices</option>
+              </optgroup>
             </select></label>
             <p class="empty" id="database-status" role="status"></p>
           </div>
-          <div class="database-scroll"><table id="database-results" aria-label="Database records"></table></div>
+          <div id="database-scroll" class="database-scroll" aria-busy="false"><table id="database-results" aria-label="Database records"></table></div>
           <div class="database-pagination">
             <button class="button" id="database-prev" type="button">Previous</button>
             <button class="button" id="database-next" type="button">Next</button>
@@ -138,11 +140,20 @@
     <form id="account-form">
       <label for="account-user">Username</label>
       <input id="account-user" name="username" autocomplete="username" minlength="3" maxlength="32" required>
+      <label id="email-label" for="account-email" hidden>Email</label>
+      <input id="account-email" name="email" type="email" autocomplete="email" maxlength="254" hidden disabled>
       <label for="account-password">Password</label>
       <input id="account-password" name="password" type="password" autocomplete="current-password" minlength="10" maxlength="128" required>
+      <label id="confirm-label" for="account-confirm" hidden>Confirm password</label>
+      <input id="account-confirm" name="confirmPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" hidden disabled>
       <label id="setup-label" for="setup-code" hidden>Admin setup code from the server window</label>
       <input id="setup-code" name="setupCode" autocomplete="off" maxlength="24" hidden>
       <button class="button primary" type="submit" id="account-submit">Sign in</button>
+    </form>
+    <form id="account-email-form" hidden>
+      <label for="profile-email">Add an email to this account</label>
+      <input id="profile-email" name="email" type="email" autocomplete="email" maxlength="254" required>
+      <button class="button primary" type="submit" id="save-email">Save email</button>
     </form>
     <div class="account-actions" id="account-actions" hidden>
       <a class="button" id="account-database" href="#database" hidden>Open database</a>

@@ -285,8 +285,15 @@ textarea { width: 100%; resize: vertical; min-height: 85px; color: inherit; bord
 .analysis-actions { display: flex; gap: 7px; flex-wrap: wrap; }
 
 :root { --motion-ease: cubic-bezier(.2, .65, .3, 1); }
+#overview { view-transition-name: market-view; }
+::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+::view-transition-old(market-view) { animation: market-exit 135ms ease-in both; }
+::view-transition-new(market-view) { animation: market-enter 275ms var(--motion-ease) both; }
+@keyframes market-exit { to { opacity: 0; translate: 0 -4px; } }
+@keyframes market-enter { from { opacity: 0; translate: 0 6px; } }
 .topbar nav a, .button, .close, .segmented button, .asset-row, .coin-table-row,
-.story, .source-card, .text-link, footer a, .news-controls select, .search-field input {
+.story, .source-card, .text-link, footer a, .news-controls select, .search-field input,
+#account-form input, #account-email-form input, #database-results td {
   transition: background-color 170ms var(--motion-ease), border-color 170ms var(--motion-ease),
     box-shadow 170ms var(--motion-ease), color 170ms var(--motion-ease), opacity 170ms var(--motion-ease);
 }
@@ -343,6 +350,7 @@ dialog[open]::backdrop { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
   .bubble, .refresh:disabled { animation: none; }
+  ::view-transition-old(market-view), ::view-transition-new(market-view) { animation: none; }
 }
 
 .shell, .chart-frame { user-select: none; }
@@ -383,16 +391,19 @@ img, .shell a { -webkit-user-drag: none; }
 .coin-tooltip strong { display: block; color: #fff; font-size: 13px; margin-top: 1px; }
 .account-modes { width: fit-content; margin-top: 14px; border-radius: 12px; }
 .account-modes button { padding-inline: 9px; height: 28px; }
-#account-form input { background: #100e23; border: 1px solid var(--line); border-radius: 8px; padding: 9px; color: #fff; font: inherit; }
+#account-form input, #account-email-form input { background: #100e23; border: 1px solid var(--line); border-radius: 8px; padding: 9px; color: #fff; font: inherit; width: 100%; }
+#account-hint { overflow-wrap: anywhere; }
+#account-dialog { max-height: min(90vh, 720px); overflow-y: auto; }
 .account-actions, .database-controls, .database-pagination { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 14px 0 0; }
 #account-result { margin-top: 10px; }
 .database-controls .filter { font-size: 12px; }
-.database-scroll { overflow-x: auto; margin-top: 14px; }
+.database-scroll { overflow-x: auto; margin-top: 14px; min-height: 74px; transition: opacity 170ms var(--motion-ease); }
+.database-scroll[aria-busy="true"] { opacity: .75; }
 #database-results { width: 100%; border-collapse: collapse; font-size: 12px; }
 #database-results :is(th, td) { border-bottom: 1px solid var(--line); padding: 9px 12px; text-align: left; }
 #database-results th { color: var(--muted); text-transform: capitalize; white-space: nowrap; }
 #database-results td { min-width: 85px; max-width: 370px; overflow-wrap: anywhere; }
-#database-results tbody tr:hover { background: #7771ff13; }
+#database-results tbody tr:hover td { background: #7771ff13; }
 @media (prefers-reduced-motion: reduce) {
   .boot-screen, .boot-progress span { transition: none; }
 }

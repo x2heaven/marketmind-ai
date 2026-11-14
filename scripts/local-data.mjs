@@ -12,17 +12,29 @@ const token = () => randomBytes(32).toString('base64url');
 const json = (value, status = 200, headers = {}) =>
   Response.json(value, { status, headers: { 'Cache-Control': 'no-store', ...headers } });
 const tables = {
-  accounts: ['id', 'username', 'role', 'created_at'],
+  accounts: ['id', 'username', 'email', 'password_status', 'role', 'created_at'],
   headlines: ['published_at', 'publisher', 'title', 'sentiment', 'confidence', 'url'],
   quotes: ['recorded_at', 'pair', 'price_usd'],
   candles: ['closed_at', 'pair', 'open_usd', 'high_usd', 'low_usd', 'close_usd'],
   analyses: ['created_at', 'username', 'headline', 'sentiment', 'confidence'],
 };
 const order = { accounts: 'id', headlines: 'published_at', quotes: 'recorded_at', candles: 'closed_at', analyses: 'id' };
+const accountColumns = "id, username, email, 'Set' AS password_status, role, created_at";
+const publicAccount = ({ username, email, role }) => ({ username, email, role });
+
+function normalizeEmail(input) {
+  const email = typeof input === 'string' ? input.trim().toLowerCase() : '';
+  return email.length <= 254 && /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(email) ? email : null;
+}
 
 export function openLocalData(origin, location = database) {
   mkdirSync(new URL('./', location), { recursive: true });
   const db = new DatabaseSync(fileURLToPath(location));
+  function transaction(write) {
+    db.exec('BEGIN IMMEDIATE');
+    try { write(); db.exec('COMMIT'); }
+    catch (error) { db.exec('ROLLBACK'); throw error; }
+  }
   db.exec(`
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
@@ -30,7 +42,7 @@ export function openLocalData(origin, location = database) {
     CREATE TABLE IF NOT EXISTS accounts (
       id INTEGER PRIMARY KEY, username TEXT UNIQUE COLLATE NOCASE NOT NULL,
       password_hash TEXT NOT NULL, salt TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('admin','member')),
-      created_at INTEGER NOT NULL
+      created_at INTEGER NOT NULL, email TEXT
     );
     CREATE UNIQUE INDEX IF NOT EXISTS one_admin ON accounts(role) WHERE role = 'admin';
     CREATE TABLE IF NOT EXISTS sessions (
@@ -53,16 +65,23 @@ export function openLocalData(origin, location = database) {
       created_at INTEGER NOT NULL, headline TEXT NOT NULL, sentiment TEXT NOT NULL, confidence REAL NOT NULL
     );
   `);
+  transaction(() => {
+    if (!db.prepare('PRAGMA table_info(accounts)').all().some(({ name }) => name === 'email')) {
+      db.exec('ALTER TABLE accounts ADD COLUMN email TEXT');
+    }
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS accounts_email ON accounts(email COLLATE NOCASE)');
+  });
   const hasAdmin = db.prepare("SELECT 1 FROM accounts WHERE role = 'admin'");
   let setupCode = hasAdmin.get() ? null : randomBytes(12).toString('hex');
   const dummySalt = randomBytes(16).toString('hex');
   const attempts = new Map();
   const selectSession = db.prepare(`
-    SELECT accounts.id, username, role FROM sessions JOIN accounts ON accounts.id = sessions.account_id
+    SELECT accounts.id, username, email, role FROM sessions JOIN accounts ON accounts.id = sessions.account_id
     WHERE token_hash = ? AND expires_at > ?
   `);
-  const addAccount = db.prepare('INSERT OR IGNORE INTO accounts(username, password_hash, salt, role, created_at) VALUES (?, ?, ?, ?, ?)');
-  const selectAccount = db.prepare('SELECT id, username, role, password_hash, salt FROM accounts WHERE username = ?');
+  const addAccount = db.prepare('INSERT OR IGNORE INTO accounts(username, email, password_hash, salt, role, created_at) VALUES (?, ?, ?, ?, ?, ?)');
+  const selectAccount = db.prepare('SELECT id, username, email, role, password_hash, salt FROM accounts WHERE username = ?');
+  const setEmail = db.prepare('UPDATE OR IGNORE accounts SET email = ? WHERE id = ? AND email IS NULL');
   const addSession = db.prepare('INSERT INTO sessions VALUES (?, ?, ?)');
   const deleteSession = db.prepare('DELETE FROM sessions WHERE token_hash = ?');
   const addHeadline = db.prepare('INSERT OR IGNORE INTO headlines VALUES (?, ?, ?, ?, ?, ?)');
@@ -72,7 +91,7 @@ export function openLocalData(origin, location = database) {
   const reads = Object.fromEntries(Object.entries(tables).map(([table, fields]) => [
     table, {
       count: db.prepare(`SELECT COUNT(*) AS total FROM ${table}`),
-      list: db.prepare(`SELECT ${table === 'analyses' ? fields.map((field) => field === 'username' ? 'accounts.username' : 'analyses.' + field).join(', ') : fields.join(', ')}
+      list: db.prepare(`SELECT ${table === 'accounts' ? accountColumns : table === 'analyses' ? fields.map((field) => field === 'username' ? 'accounts.username' : 'analyses.' + field).join(', ') : fields.join(', ')}
         FROM ${table === 'analyses' ? 'analyses JOIN accounts ON analyses.account_id = accounts.id' : table}
         ORDER BY ${table === 'analyses' ? 'analyses.' : ''}${order[table]} DESC LIMIT ? OFFSET ?`),
     },
@@ -91,24 +110,26 @@ export function openLocalData(origin, location = database) {
     deleteSession.run(sessionKey(request));
     db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(Date.now());
     addSession.run(hash(value), user.id, Date.now() + expiry);
-    return json({ user: { username: user.username, role: user.role } }, 200, sessionCookie(value, expiry / 1000));
-  }
-
-  function transaction(write) {
-    db.exec('BEGIN IMMEDIATE');
-    try { write(); db.exec('COMMIT'); }
-    catch (error) { db.exec('ROLLBACK'); throw error; }
+    return json({ user: publicAccount(user) }, 200, sessionCookie(value, expiry / 1000));
   }
 
   async function accounts(request, path) {
     const user = userFor(request);
     if (request.method === 'GET' && path === 'session') {
-      return json({ available: true, user: user ? { username: user.username, role: user.role } : null, setupRequired: !hasAdmin.get() });
+      return json({ available: true, user: user ? publicAccount(user) : null, setupRequired: !hasAdmin.get() });
     }
     if (request.method !== 'POST' || request.headers.get('origin') !== origin) return json({ error: 'Use the local site for this action.' }, 403);
     if (path === 'logout') {
       deleteSession.run(sessionKey(request));
       return json({ user: null }, 200, sessionCookie('', 0));
+    }
+    if (path === 'email') {
+      if (!user) return json({ error: 'Sign in to add your email.' }, 401);
+      const data = await request.json().catch(() => null);
+      const email = normalizeEmail(data?.email);
+      if (!email) return json({ error: 'Enter a valid email address.' }, 400);
+      if (!setEmail.run(email, user.id).changes) return json({ error: 'An email is already set or this email is in use.' }, 409);
+      return json({ user: publicAccount({ ...user, email }) });
     }
     if (!['login', 'register', 'setup'].includes(path)) return json({ error: 'Unknown action.' }, 404);
     const data = await request.json().catch(() => null);
@@ -117,6 +138,9 @@ export function openLocalData(origin, location = database) {
     if (!/^[a-zA-Z0-9_.-]{3,32}$/.test(username) || data.password.length < 10 || data.password.length > 128) {
       return json({ error: 'Use 3–32 letters, numbers, dots, dashes or underscores for the username and 10–128 characters for the password.' }, 400);
     }
+    const email = normalizeEmail(data.email);
+    if (path !== 'login' && !email) return json({ error: 'Enter a valid email address.' }, 400);
+    if (path !== 'login' && data.confirmPassword !== data.password) return json({ error: 'Passwords do not match.' }, 400);
     const time = Date.now();
     for (const [key, entry] of attempts) if (entry.until <= time) attempts.delete(key);
     const bucket = path === 'login' ? username.toLowerCase() : path === 'setup' ? ':setup' : ':register';
@@ -137,10 +161,10 @@ export function openLocalData(origin, location = database) {
     const salt = randomBytes(16).toString('hex');
     const password = (await scrypt(data.password, salt, 64)).toString('hex');
     const role = path === 'setup' ? 'admin' : 'member';
-    const created = addAccount.run(username, password, salt, role, time);
-    if (!created.changes) return json({ error: 'That username or administrator slot is already taken.' }, 409);
+    const created = addAccount.run(username, email, password, salt, role, time);
+    if (!created.changes) return json({ error: 'That username, email address, or administrator slot is already taken.' }, 409);
     if (path === 'setup') setupCode = null;
-    return newSession(request, { id: created.lastInsertRowid, username, role });
+    return newSession(request, { id: created.lastInsertRowid, username, email, role });
   }
 
   async function market(url) {

@@ -19,6 +19,8 @@ Open http://127.0.0.1:4173/. The preview uses the same Worker handler as the hos
 
 The local server creates `data/marketmind.sqlite` on first start. To create the database administrator, copy the one-time setup code shown in the server window. On the website, open **Account → Set up admin**, enter a username and password, and paste the code. Once signed in, open **Database** to browse accounts, headlines, price snapshots, hourly candles, and signed-in Quick analysis results. You can create regular accounts through **Account → Create account**.
 
+New members and administrators provide an email and confirm their password. Existing users can add their email from **Account** after signing in. The Accounts table shows the email and password status. Password hashes and salts are stored locally and omitted from the admin response.
+
 Headlines and quotes are collected when the dashboard fetches them. Hourly candles are collected when you open a coin. The local accounts, session data, and records stay with this SQLite file. The hosted dashboard uses Sites access controls. The `data/` folder is excluded from Git.
 
 ## Headline analysis
