@@ -23,4 +23,17 @@ Quick analysis in the headline dialog uses the same Worker classifier. The **Run
 
 The sentiment index averages `50 + 50 × (P(positive) − P(negative))` across the selected period. Asset scores use headlines mentioning the coin by name, ticker, or a common alias. The article count is the sample size. Assets with zero matched headlines display **No coverage**. Kraken price moves are measured from midnight UTC.
 
+## Validation
+
+The deployed headline model and an always-neutral baseline were evaluated on the same 2,388 examples from the dataset's validation split. Neutral was the majority label in the training split.
+
+| Method | Accuracy | Macro F1 |
+| --- | ---: | ---: |
+| Always neutral | 65.6% | 0.264 |
+| MarketMind headline model | 82.0% | 0.757 |
+
+These results measure headline tone on the financial-news dataset. An independent, manually labeled sample of current crypto headlines would test how well it transfers to the live feed. Some negative examples were classified as neutral.
+
+This project is a prototype and is not financial advice.
+
 Coin marks are sourced from [Cryptocurrency Icons](https://github.com/spothq/cryptocurrency-icons) and [CoinMarketCap](https://coinmarketcap.com/).

@@ -186,10 +186,6 @@ textarea { width: 100%; resize: vertical; min-height: 85px; color: inherit; bord
   .overview-grid, .details-grid { grid-template-columns: 1fr; }
   .assets { grid-column: auto; }
 }
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
-}
-
 /* Market workspace */
 .shell { width: min(1500px, 100%); padding-inline: clamp(16px, 3vw, 44px); }
 .topbar { min-height: 78px; border-bottom: 1px solid #aeb2ff1c; }
@@ -287,6 +283,39 @@ textarea { width: 100%; resize: vertical; min-height: 85px; color: inherit; bord
 .muted, .model-label { color: var(--muted); }
 .model-label { margin: 4px 0; font-size: 11px; }
 .analysis-actions { display: flex; gap: 7px; flex-wrap: wrap; }
+
+:root { --motion-ease: cubic-bezier(.2, .65, .3, 1); }
+.topbar nav a, .button, .close, .segmented button, .asset-row, .coin-table-row,
+.story, .source-card, .text-link, footer a, .news-controls select, .search-field input {
+  transition: background-color 170ms var(--motion-ease), border-color 170ms var(--motion-ease),
+    box-shadow 170ms var(--motion-ease), color 170ms var(--motion-ease), opacity 170ms var(--motion-ease);
+}
+.search-trigger:hover { box-shadow: 0 0 20px #7171ff65; }
+.bubble { transition: transform 220ms var(--motion-ease), filter 220ms var(--motion-ease), border-color 220ms var(--motion-ease); }
+.fear-track span { transition: left 300ms var(--motion-ease); }
+.refresh { transition: transform 200ms var(--motion-ease), background-color 170ms var(--motion-ease); }
+.refresh:disabled { animation: refresh-spin 1s linear infinite; }
+@keyframes refresh-spin { to { transform: rotate(360deg); } }
+#coin-chart.is-loading { visibility: hidden; }
+
+dialog {
+  opacity: 0;
+  transform: translateY(9px) scale(.98);
+  transition: opacity 180ms var(--motion-ease), transform 200ms var(--motion-ease);
+  transition: opacity 180ms var(--motion-ease), transform 200ms var(--motion-ease),
+    display 200ms allow-discrete, overlay 200ms allow-discrete;
+}
+dialog[open] { opacity: 1; transform: none; }
+dialog::backdrop {
+  opacity: 0;
+  transition: opacity 180ms var(--motion-ease);
+  transition: opacity 180ms var(--motion-ease), display 200ms allow-discrete, overlay 200ms allow-discrete;
+}
+dialog[open]::backdrop { opacity: 1; }
+@starting-style {
+  dialog[open] { opacity: 0; transform: translateY(9px) scale(.98); }
+  dialog[open]::backdrop { opacity: 0; }
+}
 @media (max-width: 1100px) {
   .workspace-grid > .assets { grid-column: span 4; }
   .workspace-grid[data-page="sentiment"] > .assets { grid-column: span 7; }
@@ -312,5 +341,6 @@ textarea { width: 100%; resize: vertical; min-height: 85px; color: inherit; bord
   .page-heading { align-items: start; flex-direction: column; padding-top: 19px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .bubble { animation: none; }
+  *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+  .bubble, .refresh:disabled { animation: none; }
 }

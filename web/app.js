@@ -25,6 +25,9 @@ const coins = [
 ];
 const kraken = 'https://api.kraken.com/0/public/';
 const $ = (id) => document.getElementById(id);
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+const entrances = new WeakMap();
+const easing = 'cubic-bezier(.2, .65, .3, 1)';
 const state = {
   quotes: new Map(),
   stories: [],
@@ -60,6 +63,15 @@ function node(tag, className, content) {
   if (className) element.className = className;
   if (content !== undefined) element.textContent = content;
   return element;
+}
+
+function reveal(element, offset = 5, duration = 220) {
+  entrances.get(element)?.cancel();
+  if (reducedMotion.matches || element.closest('[hidden]')) return;
+  entrances.set(element, element.animate([
+    { opacity: .55, translate: `0 ${offset}px` },
+    { opacity: 1, translate: '0 0' },
+  ], { duration, easing }));
 }
 
 function coinIcon(coin) {
@@ -173,7 +185,7 @@ function classify(text, classifier) {
   return result;
 }
 
-function renderQuotes() {
+function renderQuotes({ animate = true, updateTable = true } = {}) {
   const positions = [
     [49, 49, 38], [16, 22, 28], [80, 77, 27], [79, 20, 24],
     [32, 83, 22], [13, 57, 19], [82, 47, 18], [48, 13, 16],
@@ -202,6 +214,8 @@ function renderQuotes() {
     const message = quotes.length ? 'No coins match this filter.' : state.sources.quotes === false ? 'Kraken prices are unavailable.' : 'Loading prices…';
     $('bubbles').append(node('p', 'empty', message));
   }
+  if (animate) reveal($('bubbles'));
+  if (!updateTable) return;
   $('coin-table').replaceChildren(...quotes.map((quote) => {
     const button = node('button', 'coin-table-row');
     const asset = node('span', 'asset-name');
@@ -212,6 +226,7 @@ function renderQuotes() {
     return button;
   }));
   if (!quotes.length) $('coin-table').append(node('p', 'empty', state.sources.quotes === false ? 'Kraken prices are unavailable.' : 'Loading prices…'));
+  if (animate) reveal($('coin-table'));
 }
 
 function renderFear(index) {
@@ -243,7 +258,7 @@ function sentimentScore(stories) {
   return { count: scores.length, value: Math.round(100 * total / scores.length) };
 }
 
-function drawGauge(value) {
+function drawGauge(value, filled = value ?? 0) {
   const ctx = $('gauge-canvas').getContext('2d');
   ctx.clearRect(0, 0, 560, 270);
   ctx.lineWidth = 12;
@@ -259,7 +274,7 @@ function drawGauge(value) {
     const angle = Math.PI + (i / 36) * Math.PI;
     const x = Math.cos(angle);
     const y = Math.sin(angle);
-    ctx.strokeStyle = i < Math.round((value ?? 0) * .37) ? gradient : '#55516d';
+    ctx.strokeStyle = i < Math.round(filled * .37) ? gradient : '#55516d';
     ctx.beginPath();
     ctx.moveTo(280 + 194 * x, 247 + 194 * y);
     ctx.lineTo(280 + 223 * x, 247 + 223 * y);
@@ -267,11 +282,40 @@ function drawGauge(value) {
   }
 }
 
+let gaugeFrame;
+let gaugeValue = 0;
+let gaugeTarget;
+function updateGauge(value) {
+  if (value === gaugeTarget) return;
+  gaugeTarget = value;
+  cancelAnimationFrame(gaugeFrame);
+  const canvas = $('gauge-canvas');
+  const start = gaugeValue;
+  const target = value ?? 0;
+  if (reducedMotion.matches || canvas.closest('[hidden]') || value === null || start === target) {
+    gaugeValue = target;
+    drawGauge(value);
+    return;
+  }
+  const begin = performance.now();
+  const step = (time) => {
+    const progress = Math.max(0, Math.min((time - begin) / 320, 1));
+    gaugeValue = start + (target - start) * (1 - (1 - progress) ** 3);
+    drawGauge(value, gaugeValue);
+    if (progress < 1 && !reducedMotion.matches) gaugeFrame = requestAnimationFrame(step);
+    else if (progress < 1) {
+      gaugeValue = target;
+      drawGauge(value);
+    }
+  };
+  gaugeFrame = requestAnimationFrame(step);
+}
+
 function renderSentiment() {
   const stories = windowStories();
   const { count, value } = sentimentScore(stories);
   const tone = value === null ? '' : signalClass(value);
-  drawGauge(value);
+  updateGauge(value);
   $('sentiment-value').textContent = value ?? '—';
   $('sentiment-label').textContent = tone ? label(tone) : state.sources.news === undefined ? 'Loading' : 'No score';
   $('sentiment-label').className = tone;
@@ -336,7 +380,7 @@ function storyCard(story) {
   return card;
 }
 
-function renderNews() {
+function renderNews({ animate = false, append = false } = {}) {
   const filter = $('news-filter').value;
   const publisher = $('source-filter').value;
   const query = $('news-search').value.trim().toLowerCase();
@@ -348,19 +392,30 @@ function renderNews() {
   ));
   const publications = new Set(all.map(({ source }) => source)).size;
   $('news-caption').textContent = all.length ? `${stories.length} headlines · ${publications} publishers in this period` : 'Live publisher feeds';
-  $('news-grid').replaceChildren(...stories.slice(0, state.visible).map(storyCard));
+  const grid = $('news-grid');
+  append = append && [...grid.children].every((card, index) => card.querySelector('a')?.href === stories[index]?.href);
+  const cards = stories.slice(append ? grid.childElementCount : 0, state.visible).map(storyCard);
+  if (append) {
+    grid.append(...cards);
+    for (const card of cards) reveal(card);
+  } else grid.replaceChildren(...cards);
   $('more-news').hidden = stories.length <= state.visible;
   if (!stories.length) {
     let message = 'No matching headlines in this period.';
     if (state.sources.news === false) message = 'News feed is unavailable. Try refreshing.';
     else if (state.sources.news === undefined) message = 'Loading headlines…';
-    $('news-grid').append(node('p', 'empty', message));
+    grid.append(node('p', 'empty', message));
   }
+  if (animate) reveal(grid);
 }
 
-function renderHeadlineData() {
+function renderHeadlineData(animate = false) {
   renderSentiment();
-  renderNews();
+  renderNews({ animate });
+  if (animate) {
+    reveal($('asset-list'));
+    reveal($('breakdown'));
+  }
   if (state.details) renderCoinNews(state.details.coin);
 }
 
@@ -396,7 +451,7 @@ async function refresh() {
   const tasks = [
     ['quotes', getQuotes, (quotes) => { state.quotes = quotes; renderQuotes(); }],
     ['index', getIndex, renderFear],
-    ['news', getStories, renderHeadlineData],
+    ['news', getStories, () => renderHeadlineData(true)],
   ];
   await Promise.all(tasks.map(async ([key, fetchData, render]) => {
     try {
@@ -470,7 +525,9 @@ async function showCoin(coin) {
   $('coin-title').textContent = `${coin.name} · ${coin.symbol}`;
   $('coin-summary').replaceChildren(quote ? dollars(quote.price) + ' · ' : '');
   if (quote) $('coin-summary').append(change(quote.change), ' today (UTC)');
-  $('coin-chart').hidden = true;
+  const chart = $('coin-chart');
+  chart.hidden = false;
+  chart.classList.add('is-loading');
   $('coin-chart-caption').textContent = 'Loading hourly prices…';
   renderCoinNews(coin);
   if (!dialog.open) dialog.showModal();
@@ -480,20 +537,24 @@ async function showCoin(coin) {
     const candles = Object.entries(result).find(([key]) => key !== 'last')?.[1].slice(-25, -1);
     if (!candles || candles.length < 2) throw new Error('No price history');
     drawPrice(candles, coin);
-    $('coin-chart').hidden = false;
+    chart.classList.remove('is-loading');
+    reveal(chart, 3);
   } catch {
-    if (state.details === request) $('coin-chart-caption').textContent = 'Hourly prices are unavailable.';
+    if (state.details === request) {
+      chart.hidden = true;
+      $('coin-chart-caption').textContent = 'Hourly prices are unavailable.';
+    }
   }
 }
 
 $('refresh').addEventListener('click', refresh);
 $('timeframes').addEventListener('click', (event) => {
   const selected = event.target.closest('[data-hours]');
-  if (!selected) return;
+  if (!selected || Number(selected.dataset.hours) === state.hours) return;
   state.hours = Number(selected.dataset.hours);
   state.visible = 6;
   for (const button of $('timeframes').querySelectorAll('button')) button.setAttribute('aria-pressed', button === selected);
-  renderHeadlineData();
+  renderHeadlineData(true);
 });
 const pages = {
   overview: ['Market overview', 'Crypto prices, news, and market sentiment in one place.'],
@@ -504,12 +565,16 @@ const pages = {
 };
 function showPage() {
   const hash = window.location.hash.slice(1);
-  state.page = Object.hasOwn(pages, hash) ? hash : 'overview';
+  const page = Object.hasOwn(pages, hash) ? hash : 'overview';
+  const workspace = $('workspace');
+  if (workspace.dataset.page === page) return;
+  const switching = Boolean(workspace.dataset.page);
+  state.page = page;
   state.visible = 6;
   const [title, subtitle] = pages[state.page];
   $('page-title').textContent = title;
   $('page-subtitle').textContent = subtitle;
-  $('workspace').dataset.page = state.page;
+  workspace.dataset.page = state.page;
   $('timeframes').hidden = ['coins', 'sources'].includes(state.page);
   $('all-assets').hidden = state.page !== 'overview';
   $('all-news').hidden = state.page !== 'overview';
@@ -522,13 +587,20 @@ function showPage() {
   }
   renderHeadlineData();
   window.scrollTo({ top: 0, behavior: 'instant' });
+  if (switching) {
+    reveal($('page-title'), 6, 260);
+    reveal(workspace, 8, 260);
+  }
 }
 window.addEventListener('hashchange', showPage);
 for (const [id, event] of [['news-filter', 'change'], ['source-filter', 'change'], ['news-search', 'input']]) {
-  $(id).addEventListener(event, () => { state.visible = 6; renderNews(); });
+  $(id).addEventListener(event, () => {
+    state.visible = 6;
+    renderNews({ animate: event === 'change' });
+  });
 }
-$('more-news').addEventListener('click', () => { state.visible += 12; renderNews(); });
-$('mover-mode').addEventListener('change', renderQuotes);
+$('more-news').addEventListener('click', () => { state.visible += 12; renderNews({ append: true }); });
+$('mover-mode').addEventListener('change', () => renderQuotes({ updateTable: false }));
 $('open-analysis').addEventListener('click', () => $('analysis-dialog').showModal());
 document.querySelectorAll('dialog').forEach((dialog) => {
   dialog.querySelector('.close').addEventListener('click', () => dialog.close());
@@ -572,6 +644,7 @@ $('analysis-form').addEventListener('submit', async (event) => {
       row.append(node('span', '', name), progress, node('span', '', `${(prediction.score * 100).toFixed(1)}%`));
       output.append(row);
     }
+    reveal(output);
   } catch (error) {
     console.error('Headline analysis failed', error);
     output.textContent = useFinbert ? 'FinBERT could not run. Try Quick analysis or retry the download.' : 'Analysis is unavailable. Try again.';
@@ -581,6 +654,6 @@ $('analysis-form').addEventListener('submit', async (event) => {
   }
 });
 
-renderQuotes();
+renderQuotes({ animate: false });
 showPage();
 refresh();
