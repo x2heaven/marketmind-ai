@@ -673,13 +673,17 @@ const pages = {
   sources: ['News sources', 'See which publisher feeds are reachable and how much they cover.'],
   database: ['Database', 'Inspect the records collected by your local server.'],
 };
-function showPage({ nativeTransition = false } = {}) {
+function requestedPage() {
   const hash = window.location.hash.slice(1);
   const allowed = hash !== 'database' || localAccount.user?.role === 'admin';
-  const page = allowed && Object.hasOwn(pages, hash) ? hash : 'overview';
+  return allowed && Object.hasOwn(pages, hash) ? hash : 'overview';
+}
+
+function showPage(page = requestedPage()) {
   const workspace = $('workspace');
   if (workspace.dataset.page === page) return;
-  const switching = Boolean(workspace.dataset.page);
+  const main = $('page-content');
+  const hadContentFocus = main.contains(document.activeElement);
   state.page = page;
   state.visible = 6;
   const [title, subtitle] = pages[state.page];
@@ -699,23 +703,49 @@ function showPage({ nativeTransition = false } = {}) {
   renderHeadlineData();
   if (page === 'database') loadDatabase();
   window.scrollTo({ top: 0, behavior: 'instant' });
-  if (switching && !nativeTransition) {
-    reveal($('page-title'), 6, 260);
-    reveal(workspace, 8, 260);
-  }
+  if (hadContentFocus) main.focus({ preventScroll: true });
 }
-let pageTransition;
-window.addEventListener('hashchange', () => {
-  pageTransition?.skipTransition();
-  if (reducedMotion.matches || !document.startViewTransition || document.querySelector('dialog[open]')) {
+
+let leavingPage;
+let enteringPage;
+async function changePage() {
+  const main = $('page-content');
+  if (reducedMotion.matches || !main.animate || document.querySelector('dialog[open]')) {
+    leavingPage?.cancel();
+    enteringPage?.cancel();
+    leavingPage = enteringPage = undefined;
     showPage();
     return;
   }
-  const transition = document.startViewTransition(() => showPage({ nativeTransition: true }));
-  pageTransition = transition;
-  transition.finished.catch(() => {}).finally(() => {
-    if (pageTransition === transition) pageTransition = undefined;
+  if (leavingPage || requestedPage() === state.page) return;
+
+  const style = getComputedStyle(main);
+  const start = { opacity: style.opacity, transform: style.transform };
+  enteringPage?.cancel();
+  const exit = main.animate([start, { opacity: 0, transform: 'translateY(-5px)' }], {
+    duration: 145, easing: 'cubic-bezier(.4, 0, .7, 1)', fill: 'both',
   });
+  leavingPage = exit;
+  await exit.finished.catch(() => {});
+  if (leavingPage !== exit) return;
+  leavingPage = undefined;
+
+  const target = requestedPage();
+  const switched = target !== state.page;
+  showPage(target);
+  exit.cancel();
+  if (reducedMotion.matches) return;
+  const entrance = main.animate([
+    { opacity: 0, transform: `translateY(${switched ? 9 : -5}px)` },
+    { opacity: 1, transform: 'none' },
+  ], { duration: 355, easing: 'cubic-bezier(.16, 1, .3, 1)' });
+  enteringPage = entrance;
+  await entrance.finished.catch(() => {});
+  if (enteringPage === entrance) enteringPage = undefined;
+}
+window.addEventListener('hashchange', changePage);
+reducedMotion.addEventListener('change', () => {
+  if (reducedMotion.matches) changePage();
 });
 for (const [id, event] of [['news-filter', 'change'], ['source-filter', 'change'], ['news-search', 'input']]) {
   $(id).addEventListener(event, () => {

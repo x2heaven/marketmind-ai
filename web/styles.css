@@ -11,7 +11,7 @@
   --mono: "Space Mono", monospace;
 }
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
+html { scroll-behavior: smooth; scrollbar-gutter: stable; }
 body { margin: 0; min-width: 290px; min-height: 100vh; position: relative; }
 body::before {
   content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
@@ -188,10 +188,20 @@ textarea { width: 100%; resize: vertical; min-height: 85px; color: inherit; bord
 }
 /* Market workspace */
 .shell { width: min(1500px, 100%); padding-inline: clamp(16px, 3vw, 44px); }
-.topbar { min-height: 78px; border-bottom: 1px solid #aeb2ff1c; }
+.topbar {
+  position: sticky; top: 0; z-index: 3; min-height: 78px;
+  border-bottom: 1px solid #aeb2ff26; background: #0b0c1ced;
+  backdrop-filter: blur(14px); box-shadow: 0 8px 24px #08081740;
+}
 .topbar nav { gap: 5px; }
-.topbar nav a { border-color: transparent; background: transparent; color: #b7b9d0; }
+.topbar nav a { position: relative; border-color: transparent; background: transparent; color: #b7b9d0; }
 .topbar nav .is-active { color: #fff; background: #7171ff26; border-color: #827cff5c; box-shadow: inset 0 0 16px #7c6cff20; }
+.topbar nav a::after {
+  content: ''; position: absolute; inset: auto 22% 3px; height: 1px;
+  background: #bdbaff; border-radius: 2px; opacity: 0; transform: scaleX(.35);
+  transition: opacity 230ms ease, transform 280ms var(--motion-ease);
+}
+.topbar nav .is-active::after { opacity: .8; transform: scaleX(1); }
 .page-heading { display: flex; justify-content: space-between; align-items: end; gap: 14px; padding: 28px 0 18px; }
 .page-heading h1 { font-size: clamp(30px, 4.3vw, 47px); letter-spacing: -.055em; line-height: 1.02; }
 .page-heading p { color: var(--muted); font-size: 13px; margin-top: 8px; }
@@ -285,12 +295,8 @@ textarea { width: 100%; resize: vertical; min-height: 85px; color: inherit; bord
 .analysis-actions { display: flex; gap: 7px; flex-wrap: wrap; }
 
 :root { --motion-ease: cubic-bezier(.2, .65, .3, 1); }
-#overview { view-transition-name: market-view; }
-::view-transition-old(root), ::view-transition-new(root) { animation: none; }
-::view-transition-old(market-view) { animation: market-exit 135ms ease-in both; }
-::view-transition-new(market-view) { animation: market-enter 275ms var(--motion-ease) both; }
-@keyframes market-exit { to { opacity: 0; translate: 0 -4px; } }
-@keyframes market-enter { from { opacity: 0; translate: 0 6px; } }
+#page-content { min-block-size: calc(100svh - 160px); }
+#page-content:focus { outline: none; }
 .topbar nav a, .button, .close, .segmented button, .asset-row, .coin-table-row,
 .story, .source-card, .text-link, footer a, .news-controls select, .search-field input,
 #account-form input, #account-email-form input, #database-results td {
@@ -350,7 +356,6 @@ dialog[open]::backdrop { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
   .bubble, .refresh:disabled { animation: none; }
-  ::view-transition-old(market-view), ::view-transition-new(market-view) { animation: none; }
 }
 
 .shell, .chart-frame { user-select: none; }
