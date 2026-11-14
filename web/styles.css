@@ -12,7 +12,7 @@
 }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; overflow-y: scroll; }
-body { margin: 0; min-width: 290px; min-height: 100vh; position: relative; }
+body { margin: 0; min-width: 290px; min-height: 100vh; position: relative; caret-color: transparent; }
 body::before {
   content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background:
@@ -364,7 +364,8 @@ dialog[open]::backdrop { opacity: 1; }
 
 #app-shell, .chart-frame { user-select: none; }
 :is(input, textarea), .database-scroll { user-select: text; }
-.bubbles { caret-color: transparent; cursor: default; }
+:is(input, textarea):read-write { caret-color: currentColor; }
+.bubbles { cursor: default; }
 .bubble { cursor: pointer; }
 .bubble > * { pointer-events: none; }
 .coin-icon img { pointer-events: none; }
