@@ -11,34 +11,49 @@ const coins = [
   { symbol: 'TRX', name: 'TRON', pair: 'TRXUSD', icon: '▽', color: '#bf4865' },
   { symbol: 'XLM', name: 'Stellar', pair: 'XLMUSD', ticker: 'XXLMZUSD', icon: '✶', color: '#626782' },
   { symbol: 'SUI', name: 'Sui', pair: 'SUIUSD', icon: '◈', color: '#3676a5' },
+  { symbol: 'BCH', name: 'Bitcoin Cash', pair: 'BCHUSD' },
+  { symbol: 'LTC', name: 'Litecoin', pair: 'LTCUSD', ticker: 'XLTCZUSD' },
+  { symbol: 'XMR', name: 'Monero', pair: 'XMRUSD', ticker: 'XXMRZUSD' },
+  { symbol: 'HBAR', name: 'Hedera', pair: 'HBARUSD' },
+  { symbol: 'NEAR', name: 'Near Protocol', pair: 'NEARUSD' },
+  { symbol: 'UNI', name: 'Uniswap', pair: 'UNIUSD' },
+  { symbol: 'AAVE', name: 'Aave', pair: 'AAVEUSD' },
+  { symbol: 'ATOM', name: 'Cosmos', pair: 'ATOMUSD' },
+  { symbol: 'ARB', name: 'Arbitrum', pair: 'ARBUSD' },
+  { symbol: 'APT', name: 'Aptos', pair: 'APTUSD' },
+  { symbol: 'OP', name: 'Optimism', pair: 'OPUSD' },
 ];
 const kraken = 'https://api.kraken.com/0/public/';
-const storageKey = 'marketmind-finbert-v1';
 const $ = (id) => document.getElementById(id);
 const state = {
   quotes: new Map(),
   stories: [],
-  sentiments: readSentiments(),
+  publishers: [],
+  newsUpdated: null,
   hours: 24,
-  visible: 4,
-  model: 'loading',
+  visible: 6,
+  page: 'overview',
   sources: {},
   details: null,
 };
 let classifierPromise;
 let inferenceQueue = Promise.resolve();
-let modelProgress = '';
 const transformersUrl = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/';
-
-function readSentiments() {
-  try { return new Map(JSON.parse(localStorage.getItem(storageKey) ?? '[]')); }
-  catch { return new Map(); }
-}
-
-function saveSentiments() {
-  try { localStorage.setItem(storageKey, JSON.stringify([...state.sentiments].slice(-120))); }
-  catch { /* Storage can be unavailable in private or restricted sessions. */ }
-}
+const aliases = {
+  BTC: /\b(?:bitcoin(?!\s+cash)|btc|xbt)\b/i,
+  ETH: /\b(?:ethereum|ether|eth)\b/i,
+  DOGE: /\b(?:dogecoin|doge)\b/i,
+  SUI: /\bSUI\b|\bSui\b/,
+  NEAR: /\bNEAR\b|\b[Nn]ear [Pp]rotocol\b/,
+  OP: /\bOP\b|\b[Oo]ptimism (?:network|token|mainnet)\b/,
+  XLM: /\bXLM\b|\bStellar(?: Lumens| network)?\b/,
+  ATOM: /\bATOM\b|\bCosmos(?: Hub| chain)?\b/,
+};
+const assetPatterns = coins.map((coin) => {
+  const name = coin.symbol === coin.name ? null : new RegExp(`\\b${coin.name}\\b`, 'i');
+  const ticker = new RegExp(`\\b${coin.symbol}\\b`);
+  return { coin, matches: (headline) => aliases[coin.symbol]?.test(headline) ?? (name?.test(headline) || ticker.test(headline)) };
+});
 
 function node(tag, className, content) {
   const element = document.createElement(tag);
@@ -48,8 +63,12 @@ function node(tag, className, content) {
 }
 
 function coinIcon(coin) {
-  const icon = node('span', 'coin-icon', coin.icon);
-  icon.style.setProperty('--coin', coin.color);
+  const icon = node('span', 'coin-icon');
+  const image = node('img');
+  image.src = `/assets/${coin.symbol.toLowerCase()}.png`;
+  image.alt = '';
+  image.addEventListener('error', () => { icon.textContent = coin.icon ?? coin.symbol.slice(0, 1); }, { once: true });
+  icon.append(image);
   icon.setAttribute('aria-hidden', 'true');
   return icon;
 }
@@ -101,22 +120,16 @@ async function getQuotes() {
 }
 
 async function getStories() {
-  const response = await fetchSource('https://news.bitcoin.com/feed/');
-  const xml = new DOMParser().parseFromString(await response.text(), 'text/xml');
-  const stories = new Map();
-  for (const item of xml.querySelectorAll('item')) {
-    const title = item.querySelector('title')?.textContent.trim();
-    const href = item.querySelector('link')?.textContent.trim();
-    const time = Date.parse(item.querySelector('pubDate')?.textContent);
-    if (!title || !href?.startsWith('https://') || !Number.isFinite(time)) continue;
-    const assets = coins.filter(({ symbol, name }) => {
-      const fullName = new RegExp(`\\b${name}\\b`, 'i').test(title);
-      return (symbol !== name && fullName) || new RegExp(`\\b${symbol}\\b`).test(title);
-    });
-    stories.set(title, { title, href, time, assets });
-  }
-  if (!stories.size) throw new Error('No valid headlines in news feed');
-  return [...stories.values()].sort((a, b) => b.time - a.time);
+  const response = await fetch('/api/news', { signal: AbortSignal.timeout(15_000) });
+  const { stories, sources, updatedAt, stale } = await response.json();
+  state.publishers = sources;
+  state.newsUpdated = updatedAt;
+  renderPublishers();
+  if (!response.ok) throw new Error('Publishers unavailable');
+  state.stories = stories.map((story) => ({
+    ...story, assets: assetPatterns.filter(({ matches }) => matches(story.title)).map(({ coin }) => coin),
+  }));
+  return !stale;
 }
 
 async function getIndex() {
@@ -142,9 +155,7 @@ function getClassifier() {
             const percentage = Math.round(progress.progress);
             if (!Number.isFinite(percentage)) return;
             const message = percentage < 100 ? `Downloading FinBERT · ${percentage}%` : 'Starting FinBERT…';
-            if (modelProgress === message) return;
-            modelProgress = message;
-            if (state.model === 'loading') renderSentiment();
+            if ($('analysis-result').textContent !== message) $('analysis-result').textContent = message;
           },
         });
       })
@@ -164,11 +175,13 @@ function classify(text, classifier) {
 
 function renderQuotes() {
   const positions = [
-    [48, 49, 39], [17, 22, 27], [77, 76, 30], [79, 23, 23],
-    [35, 86, 24], [11, 57, 19], [78, 49, 16], [47, 15, 13],
-    [92, 10, 13], [16, 78, 12], [91, 38, 11], [57, 85, 12],
+    [49, 49, 38], [16, 22, 28], [80, 77, 27], [79, 20, 24],
+    [32, 83, 22], [13, 57, 19], [82, 47, 18], [48, 13, 16],
+    [59, 87, 15], [9, 79, 14], [94, 33, 12], [94, 60, 12],
   ];
-  const movers = [...state.quotes.values()]
+  const direction = $('mover-mode').value;
+  const quotes = [...state.quotes.values()];
+  const movers = quotes.filter(({ change }) => direction === 'all' || (direction === 'positive' ? change > 0 : change < 0))
     .sort((a, b) => Math.abs(b.change) - Math.abs(a.change))
     .slice(0, positions.length);
   $('bubbles').replaceChildren(...movers.map((quote, index) => {
@@ -177,13 +190,28 @@ function renderQuotes() {
     button.type = 'button';
     button.style.setProperty('--x', `${x}%`);
     button.style.setProperty('--y', `${y}%`);
-    button.style.setProperty('--size', `${size}%`);
+    const ratio = Math.sqrt(Math.abs(quote.change) / (Math.abs(movers[0].change) || 1));
+    button.style.setProperty('--size', `${size * (.79 + .21 * ratio)}%`);
+    button.style.setProperty('--delay', `${index * -0.43}s`);
     button.setAttribute('aria-label', `${quote.coin.name}, ${quote.change.toFixed(2)} percent, view details`);
     button.append(coinIcon(quote.coin), node('span', 'symbol', quote.coin.symbol), change(quote.change));
     button.addEventListener('click', () => showCoin(quote.coin));
     return button;
   }));
-  if (!movers.length) $('bubbles').append(node('p', 'empty', state.sources.quotes === false ? 'Kraken prices are unavailable.' : 'Loading prices…'));
+  if (!movers.length) {
+    const message = quotes.length ? 'No coins match this filter.' : state.sources.quotes === false ? 'Kraken prices are unavailable.' : 'Loading prices…';
+    $('bubbles').append(node('p', 'empty', message));
+  }
+  $('coin-table').replaceChildren(...quotes.map((quote) => {
+    const button = node('button', 'coin-table-row');
+    const asset = node('span', 'asset-name');
+    asset.append(coinIcon(quote.coin), node('strong', '', quote.coin.symbol), node('span', 'coin-name', quote.coin.name));
+    button.type = 'button';
+    button.append(asset, node('span', 'quote-number', dollars(quote.price)), change(quote.change));
+    button.addEventListener('click', () => showCoin(quote.coin));
+    return button;
+  }));
+  if (!quotes.length) $('coin-table').append(node('p', 'empty', state.sources.quotes === false ? 'Kraken prices are unavailable.' : 'Loading prices…'));
 }
 
 function renderFear(index) {
@@ -205,7 +233,7 @@ function windowStories() {
 }
 
 function sentimentScore(stories) {
-  const scores = stories.map(({ title }) => state.sentiments.get(title)).filter(Boolean);
+  const scores = stories.map(({ scores }) => scores);
   if (!scores.length) return { count: 0, value: null };
   const total = scores.reduce((sum, prediction) => {
     const positive = prediction.find(({ label }) => label === 'positive').score;
@@ -244,40 +272,57 @@ function renderSentiment() {
   const { count, value } = sentimentScore(stories);
   const tone = value === null ? '' : signalClass(value);
   drawGauge(value);
-  $('sentiment-value').textContent = value === null ? '—' : `${value}%`;
-  $('sentiment-label').textContent = tone ? label(tone) : state.model === 'loading' ? 'Analyzing' : 'No score';
+  $('sentiment-value').textContent = value ?? '—';
+  $('sentiment-label').textContent = tone ? label(tone) : state.sources.news === undefined ? 'Loading' : 'No score';
   $('sentiment-label').className = tone;
-  let message = `${count} of ${stories.length} headlines analyzed · 50% is neutral`;
+  let message = `${count} analyzed · ${new Set(stories.map(({ source }) => source)).size} publishers · 50 is neutral`;
   if (!stories.length) message = state.sources.news === false ? 'News feed unavailable' : 'No headlines in this period';
-  else if (state.model === 'error') message = count ? `${count} cached results · Model unavailable` : 'Model unavailable · Try refreshing';
-  else if (state.model === 'loading') message = count ? `${count} of ${stories.length} headlines analyzed` : modelProgress || 'Loading FinBERT · 111 MB on first use';
+  if (state.sources.news === undefined) message = 'Collecting publisher feeds…';
+  else if (state.sources.news === false && count) message += ' · Cached feed';
   $('sentiment-caption').textContent = message;
 
   const assets = coins.map((coin) => ({ coin, ...sentimentScore(stories.filter((story) => story.assets.includes(coin))) }))
-    .filter((asset) => asset.count)
     .sort((a, b) => b.count - a.count || Math.abs(b.value - 50) - Math.abs(a.value - 50))
-    .slice(0, 5);
+    .slice(0, state.page === 'overview' ? 6 : coins.length);
   $('asset-list').replaceChildren(...assets.map(({ coin, count: mentions, value: score }) => {
     const row = node('button', 'asset-row');
     row.type = 'button';
-    const signal = node('span', `asset-signal ${signalClass(score)}`, `${score}% · ${mentions}`);
-    signal.title = `${mentions} analyzed headline${mentions === 1 ? '' : 's'}`;
-    row.append(coinIcon(coin), node('span', '', coin.name), signal);
+    const name = node('span', 'asset-name');
+    name.append(node('strong', '', coin.symbol), node('span', 'coin-name', coin.name));
+    const signal = node('span', 'asset-signal');
+    if (score === null) signal.append(node('small', '', 'No coverage'));
+    else {
+      const tone = signalClass(score);
+      const meter = node('span', `mini-meter ${tone}`);
+      meter.style.setProperty('--score', `${score}%`);
+      meter.setAttribute('aria-hidden', 'true');
+      signal.append(meter, node('strong', tone, `${score}`), node('small', '', `${mentions} article${mentions === 1 ? '' : 's'}`));
+    }
+    row.append(coinIcon(coin), name, signal);
     row.addEventListener('click', () => showCoin(coin));
     return row;
   }));
-  if (!assets.length) $('asset-list').append(node('p', 'empty',
-    state.model === 'loading' ? 'Analyzing headlines…' : 'No scored asset mentions in this period.'));
+  const distribution = ['positive', 'neutral', 'negative'].map((tone) => {
+    const total = stories.filter(({ scores }) => scores[0].label === tone).length;
+    const row = node('div', 'breakdown-row');
+    const bar = node('progress', tone);
+    bar.max = stories.length || 1;
+    bar.value = total;
+    bar.setAttribute('aria-label', label(tone));
+    row.append(node('span', tone, label(tone)), bar, node('strong', '', String(total)));
+    return row;
+  });
+  $('breakdown').replaceChildren(...distribution);
 }
 
 function storyCard(story) {
-  const result = state.sentiments.get(story.title)?.[0];
+  const result = story.scores[0];
   const card = node('article', 'story');
   const header = node('header');
-  header.append(node('span', '', 'Bitcoin.com News'));
-  const tagText = result ? label(result.label) : state.model === 'error' ? 'Unscored' : 'Pending';
-  const tag = node('span', `tag ${result?.label ?? ''}`, tagText);
-  if (result) tag.title = `FinBERT confidence: ${Math.round(result.score * 100)}%`;
+  const publisher = node('span', 'publisher-name');
+  publisher.append(node('span', 'publisher-dot', story.source.slice(0, 1)), node('span', '', story.source));
+  header.append(publisher);
+  const tag = node('span', `tag ${result.label}`, label(result.label));
   header.append(tag);
   const link = node('a', '', story.title);
   link.href = story.href;
@@ -293,8 +338,16 @@ function storyCard(story) {
 
 function renderNews() {
   const filter = $('news-filter').value;
-  const stories = windowStories().filter(({ title }) => filter === 'all' || state.sentiments.get(title)?.[0].label === filter);
-  $('news-caption').textContent = `Latest ${state.hours === 24 ? '24 hours' : '7 days'} · FinBERT classification`;
+  const publisher = $('source-filter').value;
+  const query = $('news-search').value.trim().toLowerCase();
+  const all = windowStories();
+  const stories = all.filter((story) => (
+    (filter === 'all' || story.scores[0].label === filter) &&
+    (publisher === 'all' || story.source === publisher) &&
+    (!query || story.title.toLowerCase().includes(query) || story.assets.some(({symbol}) => symbol.toLowerCase() === query))
+  ));
+  const publications = new Set(all.map(({ source }) => source)).size;
+  $('news-caption').textContent = all.length ? `${stories.length} headlines · ${publications} publishers in this period` : 'Live publisher feeds';
   $('news-grid').replaceChildren(...stories.slice(0, state.visible).map(storyCard));
   $('more-news').hidden = stories.length <= state.visible;
   if (!stories.length) {
@@ -311,28 +364,28 @@ function renderHeadlineData() {
   if (state.details) renderCoinNews(state.details.coin);
 }
 
-async function analyzeStories() {
-  const pending = state.stories.filter(({ title }) => !state.sentiments.has(title));
-  if (!pending.length) {
-    state.model = 'ready';
-    renderHeadlineData();
-    return;
-  }
-  state.model = 'loading';
-  renderHeadlineData();
-  try {
-    const classifier = await getClassifier();
-    for (const { title } of pending) {
-      state.sentiments.set(title, await classify(title, classifier));
-      renderHeadlineData();
-    }
-    state.model = 'ready';
-  } catch (error) {
-    state.model = 'error';
-    console.error('FinBERT could not analyze headlines', error);
-  }
-  saveSentiments();
-  renderHeadlineData();
+function renderPublishers() {
+  const select = $('source-filter');
+  const previous = select.value;
+  const all = node('option', '', 'All publishers');
+  all.value = 'all';
+  select.replaceChildren(all, ...state.publishers.map(({ name }) => {
+    const option = node('option', '', name);
+    option.value = name;
+    return option;
+  }));
+  if ([...select.options].some(({ value }) => value === previous)) select.value = previous;
+  const available = state.publishers.filter(({status}) => status !== 'unavailable').length;
+  $('source-caption').textContent = `${available} of ${state.publishers.length} feeds reachable · Checked ${age(state.newsUpdated).toLowerCase()}`;
+  $('source-list').replaceChildren(...state.publishers.map(({ name, count, status, url }) => {
+    const link = node('a', 'source-card');
+    link.href = url;
+    link.rel = 'noopener noreferrer';
+    link.target = '_blank';
+    link.append(node('strong', '', name), node('span', status === 'active' ? 'positive' : 'muted',
+      status === 'active' ? `${count} recent headlines` : status === 'quiet' ? 'No recent headlines' : 'Feed unavailable'));
+    return link;
+  }));
 }
 
 async function refresh() {
@@ -343,12 +396,12 @@ async function refresh() {
   const tasks = [
     ['quotes', getQuotes, (quotes) => { state.quotes = quotes; renderQuotes(); }],
     ['index', getIndex, renderFear],
-    ['news', getStories, (stories) => { state.stories = stories; renderHeadlineData(); }],
+    ['news', getStories, renderHeadlineData],
   ];
   await Promise.all(tasks.map(async ([key, fetchData, render]) => {
     try {
       const data = await fetchData();
-      state.sources[key] = true;
+      state.sources[key] = key === 'news' ? data : true;
       render(data);
     } catch (error) {
       state.sources[key] = false;
@@ -361,11 +414,6 @@ async function refresh() {
   const active = Object.values(state.sources).filter(Boolean).length;
   badge.dataset.state = active === 3 ? 'live' : active ? 'partial' : 'offline';
   badge.lastElementChild.textContent = active === 3 ? 'Live sources' : active ? 'Partial feed' : 'Sources offline';
-  if (state.stories.length) await analyzeStories();
-  else {
-    state.model = 'ready';
-    renderHeadlineData();
-  }
   $('refresh').disabled = false;
 }
 
@@ -408,7 +456,9 @@ function drawPrice(candles, coin) {
 
 function renderCoinNews(coin) {
   const stories = windowStories().filter((story) => story.assets.includes(coin));
-  $('coin-news').replaceChildren(...stories.slice(0, 4).map(storyCard));
+  const { value, count } = sentimentScore(stories);
+  $('coin-sentiment').textContent = count ? `Headline sentiment ${value} / 100 · ${count} articles in ${state.hours === 24 ? '24 hours' : '7 days'}` : 'Headline sentiment · No coverage in this period';
+  $('coin-news').replaceChildren(...stories.slice(0, 6).map(storyCard));
   if (!stories.length) $('coin-news').append(node('p', 'empty', 'No matching headlines in the selected period.'));
 }
 
@@ -441,16 +491,44 @@ $('timeframes').addEventListener('click', (event) => {
   const selected = event.target.closest('[data-hours]');
   if (!selected) return;
   state.hours = Number(selected.dataset.hours);
-  state.visible = 4;
+  state.visible = 6;
   for (const button of $('timeframes').querySelectorAll('button')) button.setAttribute('aria-pressed', button === selected);
   renderHeadlineData();
 });
-$('news-filter').addEventListener('change', () => { state.visible = 4; renderNews(); });
-$('more-news').addEventListener('click', () => { state.visible += 4; renderNews(); });
-document.querySelectorAll('.topbar nav a').forEach((item) => item.addEventListener('click', () => {
-  document.querySelector('.topbar nav .is-active').classList.remove('is-active');
-  item.classList.add('is-active');
-}));
+const pages = {
+  overview: ['Market overview', 'Crypto prices, news, and market sentiment in one place.'],
+  coins: ['Coins', 'Explore price movers and live USD quotes from Kraken.'],
+  sentiment: ['Market sentiment', 'Explore the balance of positive, neutral, and negative headlines.'],
+  news: ['Market news', 'Read across publishers and filter the headlines by sentiment.'],
+  sources: ['News sources', 'See which publisher feeds are reachable and how much they cover.'],
+};
+function showPage() {
+  const hash = window.location.hash.slice(1);
+  state.page = Object.hasOwn(pages, hash) ? hash : 'overview';
+  state.visible = 6;
+  const [title, subtitle] = pages[state.page];
+  $('page-title').textContent = title;
+  $('page-subtitle').textContent = subtitle;
+  $('workspace').dataset.page = state.page;
+  $('timeframes').hidden = ['coins', 'sources'].includes(state.page);
+  $('all-assets').hidden = state.page !== 'overview';
+  $('all-news').hidden = state.page !== 'overview';
+  for (const panel of document.querySelectorAll('[data-pages]')) panel.hidden = !panel.dataset.pages.split(' ').includes(state.page);
+  for (const link of document.querySelectorAll('.topbar nav a')) {
+    const selected = link.hash === '#' + state.page;
+    link.classList.toggle('is-active', selected);
+    if (selected) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  }
+  renderHeadlineData();
+  window.scrollTo({ top: 0, behavior: 'instant' });
+}
+window.addEventListener('hashchange', showPage);
+for (const [id, event] of [['news-filter', 'change'], ['source-filter', 'change'], ['news-search', 'input']]) {
+  $(id).addEventListener(event, () => { state.visible = 6; renderNews(); });
+}
+$('more-news').addEventListener('click', () => { state.visible += 12; renderNews(); });
+$('mover-mode').addEventListener('change', renderQuotes);
 $('open-analysis').addEventListener('click', () => $('analysis-dialog').showModal());
 document.querySelectorAll('dialog').forEach((dialog) => {
   dialog.querySelector('.close').addEventListener('click', () => dialog.close());
@@ -466,12 +544,24 @@ $('analysis-form').addEventListener('submit', async (event) => {
     return;
   }
   const button = event.submitter;
-  button.disabled = true;
+  const buttons = [...event.currentTarget.querySelectorAll('button[type="submit"]')];
+  for (const item of buttons) item.disabled = true;
   $('headline').readOnly = true;
-  output.textContent = 'Running FinBERT…';
+  const useFinbert = button?.value === 'finbert';
+  output.textContent = useFinbert ? 'Loading FinBERT · 111 MB on first use' : 'Analyzing…';
   try {
-    const result = await classify(text, await getClassifier());
-    output.replaceChildren(node('strong', result[0].label, `${label(result[0].label)} sentiment`));
+    let result;
+    if (useFinbert) result = await classify(text, await getClassifier());
+    else {
+      const response = await fetch('/api/analyze', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }), signal: AbortSignal.timeout(8000),
+      });
+      if (!response.ok) throw new Error('Analysis unavailable');
+      result = (await response.json()).scores;
+    }
+    output.replaceChildren(node('strong', result[0].label, `${label(result[0].label)} sentiment`),
+      node('p', 'model-label', useFinbert ? 'ProsusAI FinBERT' : 'Live headline model'));
     for (const prediction of result) {
       const row = node('div', `confidence-row ${prediction.label}`);
       const name = label(prediction.label);
@@ -484,13 +574,13 @@ $('analysis-form').addEventListener('submit', async (event) => {
     }
   } catch (error) {
     console.error('Headline analysis failed', error);
-    output.textContent = 'FinBERT could not run. Check your connection and try again.';
+    output.textContent = useFinbert ? 'FinBERT could not run. Try Quick analysis or retry the download.' : 'Analysis is unavailable. Try again.';
   } finally {
     $('headline').readOnly = false;
-    button.disabled = false;
+    for (const item of buttons) item.disabled = false;
   }
 });
 
 renderQuotes();
-drawGauge(null);
+showPage();
 refresh();
