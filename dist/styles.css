@@ -68,7 +68,7 @@ h1, h2, h3, p { margin: 0; }
 .neutral { color: var(--neutral); }
 .overview-grid, .details-grid { display: grid; gap: 14px; }
 .overview-grid { grid-template-columns: 1.04fr 1.05fr .74fr; }
-.details-grid { grid-template-columns: 1.04fr 1.79fr; margin-top: 14px; }
+.details-grid { grid-template-columns: calc((100% - 28px) * .36749) 1fr; margin-top: 14px; }
 .panel {
   min-width: 0; border: 1px solid #a9aff375; border-radius: 12px; padding: 20px;
   background: linear-gradient(145deg, #0d0d1ee9, #0c0b23c4 60%, #0e0d2bd1);

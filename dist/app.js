@@ -190,7 +190,7 @@ function renderFear(index) {
   $('fear-marker').hidden = !index;
   $('fear-value').textContent = index?.value ?? '—';
   $('fear-label').textContent = index?.description ?? 'Index unavailable';
-  $('fear-label').className = index ? signalClass(index.value) : '';
+  $('fear-label').className = index ? `fear-label ${signalClass(index.value)}` : 'fear-label';
   if (index) $('fear-marker').style.setProperty('--position', `${index.value}%`);
 }
 
