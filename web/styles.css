@@ -344,3 +344,55 @@ dialog[open]::backdrop { opacity: 1; }
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
   .bubble, .refresh:disabled { animation: none; }
 }
+
+.shell, .chart-frame { user-select: none; }
+:is(input, textarea), .database-scroll { user-select: text; }
+.coin-icon img { pointer-events: none; }
+img, .shell a { -webkit-user-drag: none; }
+.topbar { flex-wrap: wrap; }
+#open-account { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-grid > .database-panel { grid-column: 1 / -1; }
+.workspace-grid > .ai-insights { grid-column: 1 / -1; }
+.brief-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 235px), 1fr)); gap: 10px; margin-top: 12px; }
+.shift-card { border: 1px solid var(--line); border-radius: 9px; padding: 9px; }
+.shift-details { display: grid; gap: 3px; flex: 1; }
+.shift-details small { color: var(--muted); }
+.boot-screen {
+  position: fixed; inset: 0; z-index: 5; display: grid; place-items: center; padding: 20px;
+  background: radial-gradient(ellipse at 50% 46%, #2b1b60, #0b0918 58%);
+  transition: opacity 230ms ease, visibility 230ms ease;
+}
+.boot-screen.is-ready { opacity: 0; visibility: hidden; pointer-events: none; }
+.boot-card { width: min(300px, 100%); text-align: center; }
+.boot-card .brand-mark { margin: 0 auto 16px; transform: scale(1.5); }
+.boot-card strong { font-size: 29px; letter-spacing: -.04em; }
+.boot-card p { margin-top: 10px; color: var(--muted); font-size: 12px; }
+.boot-progress { height: 4px; margin-top: 20px; background: #b19aff2c; border-radius: 8px; overflow: hidden; }
+.boot-progress span {
+  display: block; height: 100%; width: var(--progress, 8%); border-radius: inherit;
+  background: linear-gradient(90deg, #ad80ff, #6cd6ff); transition: width 280ms ease;
+}
+.chart-frame { position: relative; margin-top: 12px; }
+.chart-frame #coin-chart { margin-top: 0; cursor: crosshair; touch-action: pan-y; }
+.coin-tooltip {
+  position: absolute; inset-block-start: 2px; pointer-events: none; translate: -50% 0;
+  left: clamp(66px, var(--point, 50%), calc(100% - 66px)); width: max-content; max-width: 132px; padding: 6px 9px;
+  border: 1px solid #a799dc90; border-radius: 8px; background: #17132e; box-shadow: 0 4px 15px #0009;
+  font-size: 10px; color: #d8cfff; white-space: nowrap;
+}
+.coin-tooltip strong { display: block; color: #fff; font-size: 13px; margin-top: 1px; }
+.account-modes { width: fit-content; margin-top: 14px; border-radius: 12px; }
+.account-modes button { padding-inline: 9px; height: 28px; }
+#account-form input { background: #100e23; border: 1px solid var(--line); border-radius: 8px; padding: 9px; color: #fff; font: inherit; }
+.account-actions, .database-controls, .database-pagination { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 14px 0 0; }
+#account-result { margin-top: 10px; }
+.database-controls .filter { font-size: 12px; }
+.database-scroll { overflow-x: auto; margin-top: 14px; }
+#database-results { width: 100%; border-collapse: collapse; font-size: 12px; }
+#database-results :is(th, td) { border-bottom: 1px solid var(--line); padding: 9px 12px; text-align: left; }
+#database-results th { color: var(--muted); text-transform: capitalize; white-space: nowrap; }
+#database-results td { min-width: 85px; max-width: 370px; overflow-wrap: anywhere; }
+#database-results tbody tr:hover { background: #7771ff13; }
+@media (prefers-reduced-motion: reduce) {
+  .boot-screen, .boot-progress span { transition: none; }
+}

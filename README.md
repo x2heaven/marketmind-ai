@@ -1,10 +1,10 @@
 # MarketMind AI
 
-MarketMind AI tracks cryptocurrency prices from Kraken and English-language headlines from 21 publisher feeds. Alternative.me supplies the separate Crypto Fear & Greed Index.
+MarketMind AI tracks cryptocurrency prices from Kraken and analyzes English-language headlines from 21 publisher feeds.
 
 ## Run locally
 
-Requires Node.js 22 or newer. On Windows, extract the entire archive and double-click `Start-MarketMind.bat` in the project folder. It builds and starts the site, then opens it in your default browser. Keep the command window open while using the site. To stop the server, close the window or press Ctrl+C.
+Requires Node.js 22.13 or newer with built-in SQLite. On Windows, extract the entire archive and double-click `Start-MarketMind.bat` in the project folder. It builds and starts the site, then opens it in your default browser. Keep the command window open while using the site. To stop the server, close the window or press Ctrl+C.
 
 To start it manually from the project folder, run:
 
@@ -15,6 +15,12 @@ npm run preview
 
 Open http://127.0.0.1:4173/. The preview uses the same Worker handler as the hosted Site. It needs internet access for market data and news.
 
+## Local accounts and database
+
+The local server creates `data/marketmind.sqlite` on first start. To create the database administrator, copy the one-time setup code shown in the server window. On the website, open **Account → Set up admin**, enter a username and password, and paste the code. Once signed in, open **Database** to browse accounts, headlines, price snapshots, hourly candles, and signed-in Quick analysis results. You can create regular accounts through **Account → Create account**.
+
+Headlines and quotes are collected when the dashboard fetches them. Hourly candles are collected when you open a coin. The local accounts, session data, and records stay with this SQLite file. The hosted dashboard uses Sites access controls. The `data/` folder is excluded from Git.
+
 ## Headline analysis
 
 The Worker fetches RSS and Atom feeds in parallel, deduplicates headlines and URLs, and caches the combined response for three minutes. It classifies headlines on the server using a logistic regression model trained on the [Twitter Financial News Sentiment dataset](https://huggingface.co/datasets/zeroshot/twitter-financial-news-sentiment) and supplementary crypto examples. Its word and two-word features are exported to `worker/model.json`. The model can be reproduced using `scripts/train-model.py`, scikit-learn, and the dataset's training and validation CSVs.
@@ -22,6 +28,8 @@ The Worker fetches RSS and Atom feeds in parallel, deduplicates headlines and UR
 Quick analysis in the headline dialog uses the same Worker classifier. The **Run FinBERT** button uses the [ONNX port](https://huggingface.co/Xenova/finbert) of [ProsusAI/finbert](https://huggingface.co/ProsusAI/finbert) in the browser. It downloads about 111 MB of weights the first time and processes the entered text locally. Neither path requires an API key.
 
 The sentiment index averages `50 + 50 × (P(positive) − P(negative))` across the selected period. Asset scores use headlines mentioning the coin by name, ticker, or a common alias. The article count is the sample size. Assets with zero matched headlines display **No coverage**. Kraken price moves are measured from midnight UTC.
+
+AI News Pulse uses the balance of positive and negative model labels across all headlines. AI Market Brief links to the highest-confidence positive and negative articles. Asset Sentiment Shifts compares model scores from the two halves of the selected period when both halves have at least three mentions of a coin.
 
 ## Validation
 

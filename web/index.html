@@ -13,7 +13,16 @@
   <script src="./app.js" type="module"></script>
 </head>
 <body>
-  <div class="shell">
+  <noscript><style>.boot-screen { display: none !important; }</style><p class="empty">Enable JavaScript to load MarketMind AI.</p></noscript>
+  <div class="boot-screen" id="boot-screen" role="status" aria-live="polite">
+    <div class="boot-card">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <strong>MarketMind AI</strong>
+      <div class="boot-progress" aria-hidden="true"><span id="boot-bar"></span></div>
+      <p id="boot-status">Connecting to market data…</p>
+    </div>
+  </div>
+  <div class="shell" id="app-shell">
     <header class="topbar">
       <a class="brand" href="#" aria-label="MarketMind AI dashboard">
         <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
@@ -25,12 +34,14 @@
         <a href="#sentiment">Market Sentiment</a>
         <a href="#news">Market News</a>
         <a href="#sources">Sources</a>
+        <a href="#database" id="admin-link" hidden>Database</a>
       </nav>
       <div class="live-tools">
         <span class="live-status" id="live-status" role="status"><i></i><span>Connecting</span></span>
         <button class="refresh" id="refresh" type="button" aria-label="Refresh market and news data" title="Refresh data">↻</button>
       </div>
       <button class="button search-trigger" id="open-analysis" type="button"><span aria-hidden="true">✦</span> Analyze headline</button>
+      <button class="button" id="open-account" type="button" hidden>Sign in</button>
     </header>
     <main id="overview">
       <div class="page-heading"><div><h1 id="page-title">Market overview</h1><p id="page-subtitle">Crypto prices, news, and market sentiment in one place.</p></div>
@@ -38,11 +49,11 @@
       </div>
       <div class="workspace-grid" id="workspace">
         <section class="panel fear" aria-labelledby="fear-title" data-pages="overview">
-          <div class="panel-heading"><div><h2 id="fear-title">Fear &amp; Greed in the Market Today</h2><p>Crypto Fear &amp; Greed Index</p></div></div>
+          <div class="panel-heading"><div><h2 id="fear-title">AI News Pulse</h2><p>From bearish to bullish headline tone</p></div></div>
           <div class="fear-reading"><strong id="fear-value">—</strong><span>/ 100</span></div>
-          <div class="fear-label" id="fear-label">Loading index</div>
+          <div class="fear-label" id="fear-label">Analyzing headlines…</div>
           <div class="fear-track" aria-hidden="true"><span id="fear-marker" hidden></span></div>
-          <div class="scale"><span>FEAR</span><span>NEUTRAL</span><span>GREED</span></div>
+          <div class="scale"><span>BEARISH</span><span>NEUTRAL</span><span>BULLISH</span></div>
         </section>
         <section class="panel gauge" aria-labelledby="sentiment-title" data-pages="overview sentiment">
           <div class="panel-heading"><div><h2 id="sentiment-title">Market Sentiment</h2><p>AI analysis of financial headlines</p></div>
@@ -80,19 +91,65 @@
         <section class="panel breakdown" aria-labelledby="breakdown-title" data-pages="sentiment" hidden>
           <div class="panel-heading"><div><h2 id="breakdown-title">Headline Breakdown</h2><p>Share of headlines in each tone</p></div></div>
           <div id="breakdown"></div>
-          <details class="method"><summary>How to read the score</summary><p>Each headline receives positive, neutral, and negative model scores. The index averages 50 + 50 × (positive probability − negative probability). For each coin, only headlines mentioning its name or ticker count. The number next to the score is the headline count. Small samples can swing sharply.</p><p>Market Sentiment measures headline tone. Fear &amp; Greed is a separate index from Alternative.me.</p></details>
+          <details class="method"><summary>How to read the scores</summary><p>Market Sentiment averages 50 + 50 × (positive probability − negative probability). AI News Pulse compares the number of positive and negative headlines, with neutral headlines moderating the result. For each coin, only headlines mentioning it count.</p><p>Both scores measure headline tone. The supporting stories are the strongest model signals in the selected period.</p></details>
+        </section>
+        <section class="panel ai-insights" aria-labelledby="insights-title" data-pages="overview sentiment">
+          <div class="panel-heading"><div><h2 id="insights-title">AI Market Brief</h2><p id="brief-summary">Waiting for classified headlines…</p></div></div>
+          <div class="brief-grid" id="brief-results"></div>
+        </section>
+        <section class="panel ai-insights" aria-labelledby="shifts-title" data-pages="sentiment" hidden>
+          <div class="panel-heading"><div><h2 id="shifts-title">Asset Sentiment Shifts</h2><p id="shifts-caption">Compares two periods with at least three headlines each.</p></div></div>
+          <div class="brief-grid" id="shift-results"></div>
         </section>
         <section class="panel source-panel" aria-labelledby="sources-title" data-pages="sources" hidden>
           <div class="panel-heading"><div><h2 id="sources-title">Publisher Coverage</h2><p id="source-caption">Checking feeds…</p></div></div>
           <div id="source-list" class="source-grid"></div>
         </section>
+        <section class="panel database-panel" aria-labelledby="database-title" data-pages="database" hidden>
+          <div class="panel-heading"><div><h2 id="database-title">Local database</h2><p>Browse the SQLite tables stored on this computer.</p></div><button class="button" type="button" id="reload-database">Refresh</button></div>
+          <div class="database-controls">
+            <label class="filter"><span>Table</span> <select id="database-table">
+              <option value="accounts">Accounts</option><option value="headlines">Headlines</option>
+              <option value="quotes">Price snapshots</option><option value="candles">Hourly prices</option>
+              <option value="analyses">Quick analyses</option>
+            </select></label>
+            <p class="empty" id="database-status" role="status"></p>
+          </div>
+          <div class="database-scroll"><table id="database-results" aria-label="Database records"></table></div>
+          <div class="database-pagination">
+            <button class="button" id="database-prev" type="button">Previous</button>
+            <button class="button" id="database-next" type="button">Next</button>
+          </div>
+        </section>
       </div>
       <footer>
         <span>MarketMind AI · Veritas AI Hackathon</span>
-      <span><a href="https://www.kraken.com/" target="_blank" rel="noopener noreferrer">Kraken</a><a href="https://alternative.me/crypto/fear-and-greed-index/" target="_blank" rel="noopener noreferrer">Alternative.me</a><a href="#sources">News sources</a><a href="https://huggingface.co/ProsusAI/finbert" target="_blank" rel="noopener noreferrer">FinBERT</a></span>
+      <span><a href="https://www.kraken.com/" target="_blank" rel="noopener noreferrer">Kraken</a><a href="#sources">News sources</a><a href="https://huggingface.co/ProsusAI/finbert" target="_blank" rel="noopener noreferrer">FinBERT</a></span>
       </footer>
     </main>
   </div>
+  <dialog id="account-dialog" aria-labelledby="account-title">
+    <div class="dialog-heading"><div><h2 id="account-title">Local account</h2><p id="account-hint"></p></div><button class="close" type="button" aria-label="Close account">×</button></div>
+    <div class="segmented account-modes" id="account-modes" aria-label="Account options">
+      <button type="button" data-action="login" aria-pressed="true">Sign in</button>
+      <button type="button" data-action="register" aria-pressed="false">Create account</button>
+      <button type="button" data-action="setup" aria-pressed="false" hidden>Set up admin</button>
+    </div>
+    <form id="account-form">
+      <label for="account-user">Username</label>
+      <input id="account-user" name="username" autocomplete="username" minlength="3" maxlength="32" required>
+      <label for="account-password">Password</label>
+      <input id="account-password" name="password" type="password" autocomplete="current-password" minlength="10" maxlength="128" required>
+      <label id="setup-label" for="setup-code" hidden>Admin setup code from the server window</label>
+      <input id="setup-code" name="setupCode" autocomplete="off" maxlength="24" hidden>
+      <button class="button primary" type="submit" id="account-submit">Sign in</button>
+    </form>
+    <div class="account-actions" id="account-actions" hidden>
+      <a class="button" id="account-database" href="#database" hidden>Open database</a>
+      <button class="button" id="sign-out" type="button">Sign out</button>
+    </div>
+    <p class="empty" id="account-result" role="status"></p>
+  </dialog>
   <dialog id="analysis-dialog" aria-labelledby="analysis-title">
     <div class="dialog-heading"><div><h2 id="analysis-title">Analyze a headline</h2><p>Compare the live headline model with ProsusAI FinBERT.</p></div><button class="close" type="button" aria-label="Close analysis">×</button></div>
     <form id="analysis-form">
@@ -104,7 +161,10 @@
   </dialog>
   <dialog id="coin-dialog" aria-labelledby="coin-title">
     <div class="dialog-heading"><div><h2 id="coin-title">Coin details</h2><p id="coin-summary"></p></div><button class="close" type="button" aria-label="Close coin details">×</button></div>
-    <canvas id="coin-chart" width="900" height="320" role="img" aria-label="Hourly closing price over the last 24 hours"></canvas>
+    <div class="chart-frame" id="coin-chart-frame">
+      <canvas id="coin-chart" width="900" height="320" tabindex="0" aria-label="Hourly closing prices. Use the left and right arrow keys to explore." aria-describedby="coin-chart-caption"></canvas>
+      <div id="coin-tooltip" class="coin-tooltip" aria-live="polite" hidden><time id="coin-tooltip-time"></time><strong id="coin-tooltip-price"></strong></div>
+    </div>
     <p id="coin-chart-caption" class="chart-caption" role="status"></p>
     <p id="coin-sentiment" class="chart-caption"></p>
     <h3>Related headlines</h3><div id="coin-news"></div>

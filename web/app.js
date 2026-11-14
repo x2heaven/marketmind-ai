@@ -39,6 +39,7 @@ const state = {
   sources: {},
   details: null,
 };
+const localAccount = { available: false, user: null, setupRequired: false, mode: 'login', tablePage: 1 };
 let classifierPromise;
 let inferenceQueue = Promise.resolve();
 const transformersUrl = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/';
@@ -79,6 +80,7 @@ function coinIcon(coin) {
   const image = node('img');
   image.src = `/assets/${coin.symbol.toLowerCase()}.png`;
   image.alt = '';
+  image.draggable = false;
   image.addEventListener('error', () => { icon.textContent = coin.icon ?? coin.symbol.slice(0, 1); }, { once: true });
   icon.append(image);
   icon.setAttribute('aria-hidden', 'true');
@@ -114,7 +116,11 @@ async function fetchSource(url) {
 }
 
 async function fetchKraken(endpoint) {
-  const { error, result } = await (await fetchSource(kraken + endpoint)).json();
+  const [method, query] = endpoint.split('?');
+  const route = localAccount.available
+    ? '/api/local/market?' + new URLSearchParams({ endpoint: method, pair: new URLSearchParams(query).get('pair') })
+    : kraken + endpoint;
+  const { error, result } = await (await fetchSource(route)).json();
   if (error.length || !result) throw new Error(error.join(', ') || 'No market data');
   return result;
 }
@@ -142,14 +148,6 @@ async function getStories() {
     ...story, assets: assetPatterns.filter(({ matches }) => matches(story.title)).map(({ coin }) => coin),
   }));
   return !stale;
-}
-
-async function getIndex() {
-  const { data } = await (await fetchSource('https://api.alternative.me/fng/?limit=1')).json();
-  const value = Number(data?.[0]?.value);
-  const description = data?.[0]?.value_classification;
-  if (!Number.isFinite(value) || value < 0 || value > 100 || !description) throw new Error('Invalid index');
-  return { value, description };
 }
 
 function getClassifier() {
@@ -232,7 +230,7 @@ function renderQuotes({ animate = true, updateTable = true } = {}) {
 function renderFear(index) {
   $('fear-marker').hidden = !index;
   $('fear-value').textContent = index?.value ?? '—';
-  $('fear-label').textContent = index?.description ?? 'Index unavailable';
+  $('fear-label').textContent = index?.description ?? (state.sources.news === undefined ? 'Analyzing headlines…' : 'No headlines to score');
   $('fear-label').className = index ? `fear-label ${signalClass(index.value)}` : 'fear-label';
   if (index) $('fear-marker').style.setProperty('--position', `${index.value}%`);
 }
@@ -243,8 +241,8 @@ function signalClass(score) {
   return 'neutral';
 }
 
-function windowStories() {
-  return state.stories.filter(({ time }) => time >= Date.now() - state.hours * 3_600_000);
+function windowStories(now = Date.now()) {
+  return state.stories.filter(({ time }) => time >= now - state.hours * 3_600_000);
 }
 
 function sentimentScore(stories) {
@@ -312,7 +310,8 @@ function updateGauge(value) {
 }
 
 function renderSentiment() {
-  const stories = windowStories();
+  const now = Date.now();
+  const stories = windowStories(now);
   const { count, value } = sentimentScore(stories);
   const tone = value === null ? '' : signalClass(value);
   updateGauge(value);
@@ -357,6 +356,41 @@ function renderSentiment() {
     return row;
   });
   $('breakdown').replaceChildren(...distribution);
+  renderAiInsights(stories, now);
+}
+
+function renderAiInsights(stories, now) {
+  const groups = { positive: [], neutral: [], negative: [] };
+  for (const story of stories) groups[story.scores[0].label].push(story);
+  const { positive, neutral, negative } = groups;
+  const pulse = stories.length ? Math.round(50 + 50 * (positive.length - negative.length) / stories.length) : null;
+  const tones = { negative: 'Bearish headlines', neutral: 'Mixed headline tone', positive: 'Bullish headlines' };
+  renderFear(pulse === null ? null : { value: pulse, description: tones[signalClass(pulse)] });
+  $('brief-summary').textContent = stories.length
+    ? `${positive.length} positive · ${neutral.length} neutral · ${negative.length} negative · strongest model signals below`
+    : state.sources.news === undefined ? 'Waiting for classified headlines…' : 'No classified headlines in this period.';
+  $('brief-results').replaceChildren(...[negative, positive].flatMap((group) =>
+    [...group].sort((a, b) => b.scores[0].score - a.scores[0].score).slice(0, 2).map(storyCard)));
+
+  if (state.page !== 'sentiment') return;
+  const midpoint = now - state.hours * 1_800_000;
+  const shifts = coins.flatMap((coin) => {
+    const mentions = stories.filter((story) => story.assets.includes(coin));
+    const earlier = sentimentScore(mentions.filter(({ time }) => time < midpoint));
+    const recent = sentimentScore(mentions.filter(({ time }) => time >= midpoint));
+    return recent.count >= 3 && earlier.count >= 3 ? [{ coin, earlier, recent, delta: recent.value - earlier.value }] : [];
+  }).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+  $('shifts-caption').textContent = `Latest ${state.hours / 2} hours vs. preceding ${state.hours / 2} hours · minimum 3 headlines each`;
+  const cards = shifts.slice(0, 6).map(({ coin, earlier, recent, delta }) => {
+    const button = node('button', 'asset-row shift-card');
+    button.type = 'button';
+    const details = node('span', 'shift-details');
+    details.append(node('strong', '', coin.name), node('small', '', `${earlier.value} → ${recent.value} · ${earlier.count + recent.count} articles`));
+    button.append(coinIcon(coin), details, node('strong', delta > 0 ? 'positive' : delta < 0 ? 'negative' : '', `${delta > 0 ? '+' : ''}${delta} pts`));
+    button.addEventListener('click', () => showCoin(coin));
+    return button;
+  });
+  $('shift-results').replaceChildren(...(cards.length ? cards : [node('p', 'empty', 'Too few headlines to measure a shift.')]));
 }
 
 function storyCard(story) {
@@ -450,9 +484,9 @@ async function refresh() {
   badge.lastElementChild.textContent = 'Connecting';
   const tasks = [
     ['quotes', getQuotes, (quotes) => { state.quotes = quotes; renderQuotes(); }],
-    ['index', getIndex, renderFear],
     ['news', getStories, () => renderHeadlineData(true)],
   ];
+  let completed = 0;
   await Promise.all(tasks.map(async ([key, fetchData, render]) => {
     try {
       const data = await fetchData();
@@ -462,23 +496,44 @@ async function refresh() {
       state.sources[key] = false;
       console.error(`Unable to refresh ${key}`, error);
       if (key === 'quotes' && !state.quotes.size) renderQuotes();
-      if (key === 'index' && $('fear-marker').hidden) renderFear(null);
       if (key === 'news') renderHeadlineData();
+    } finally {
+      completed++;
+      $('boot-bar').style.setProperty('--progress', `${completed * 100 / tasks.length}%`);
+      $('boot-status').textContent = completed === tasks.length ? 'Opening dashboard…' : `Connecting to market data · ${completed} of ${tasks.length}`;
     }
   }));
   const active = Object.values(state.sources).filter(Boolean).length;
-  badge.dataset.state = active === 3 ? 'live' : active ? 'partial' : 'offline';
-  badge.lastElementChild.textContent = active === 3 ? 'Live sources' : active ? 'Partial feed' : 'Sources offline';
+  badge.dataset.state = active === tasks.length ? 'live' : active ? 'partial' : 'offline';
+  badge.lastElementChild.textContent = active === tasks.length ? 'Live sources' : active ? 'Partial feed' : 'Sources offline';
   $('refresh').disabled = false;
 }
 
-function drawPrice(candles, coin) {
+const chartDate = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'UTC', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+let chartData;
+
+function drawPrice(candles) {
+  const values = candles.map((row) => ({ time: (Number(row[0]) + 3600) * 1000, price: Number(row[4]) }))
+    .filter(({ time, price }) => Number.isFinite(time) && Number.isFinite(price));
+  if (values.length < 2) throw new Error('No price history');
+  const low = Math.min(...values.map(({ price }) => price));
+  const high = Math.max(...values.map(({ price }) => price));
+  const span = high - low;
+  chartData = {
+    points: values.map((value, index) => ({
+      ...value, x: 24 + 850 * index / (values.length - 1), y: span ? 267 - (value.price - low) / span * 215 : 159,
+    })),
+    active: -1,
+  };
+  paintPrice();
+  $('coin-chart-caption').textContent = `${values.length} hourly closes · ${dollars(low)} – ${dollars(high)} · UTC`;
+}
+
+function paintPrice() {
   const ctx = $('coin-chart').getContext('2d');
-  const prices = candles.map((row) => Number(row[4])).filter(Number.isFinite);
-  const low = Math.min(...prices);
-  const high = Math.max(...prices);
-  const span = high - low || high * .02 || 1;
-  const points = prices.map((price, index) => [24 + 850 * index / (prices.length - 1), 267 - ((price - low) / span) * 215]);
+  const { points, active } = chartData;
   ctx.clearRect(0, 0, 900, 320);
   ctx.strokeStyle = '#454058';
   ctx.lineWidth = 1;
@@ -490,7 +545,7 @@ function drawPrice(candles, coin) {
   }
   const trace = () => {
     ctx.beginPath();
-    points.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+    points.forEach(({ x, y }, i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
   };
   const gradient = ctx.createLinearGradient(0, 40, 0, 286);
   gradient.addColorStop(0, '#8874f892');
@@ -505,8 +560,34 @@ function drawPrice(candles, coin) {
   ctx.lineWidth = 5;
   ctx.strokeStyle = '#bba9ff';
   ctx.stroke();
-  $('coin-chart').setAttribute('aria-label', `${coin.name}, hourly closing prices from ${dollars(prices[0])} to ${dollars(prices.at(-1))}.`);
-  $('coin-chart-caption').textContent = `24 hourly closes · Range ${dollars(low)} – ${dollars(high)}`;
+  const point = points[active];
+  if (!point) return;
+  ctx.strokeStyle = '#c1b6f2aa';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(point.x, 38);
+  ctx.lineTo(point.x, 286);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(point.x, point.y, 7, 0, 2 * Math.PI);
+  ctx.fillStyle = '#e6dcff';
+  ctx.fill();
+}
+
+function selectChartPoint(index) {
+  if (!chartData || index === chartData.active) return;
+  chartData.active = index;
+  const point = chartData.points[index];
+  const tooltip = $('coin-tooltip');
+  tooltip.hidden = !point;
+  if (point) {
+    const date = new Date(point.time);
+    $('coin-tooltip-time').dateTime = date.toISOString();
+    $('coin-tooltip-time').textContent = chartDate.format(date) + ' UTC';
+    $('coin-tooltip-price').textContent = dollars(point.price);
+    tooltip.style.setProperty('--point', `${point.x / 9}%`);
+  }
+  paintPrice();
 }
 
 function renderCoinNews(coin) {
@@ -526,6 +607,9 @@ async function showCoin(coin) {
   $('coin-summary').replaceChildren(quote ? dollars(quote.price) + ' · ' : '');
   if (quote) $('coin-summary').append(change(quote.change), ' today (UTC)');
   const chart = $('coin-chart');
+  chartData = null;
+  $('coin-tooltip').hidden = true;
+  $('coin-chart-frame').hidden = false;
   chart.hidden = false;
   chart.classList.add('is-loading');
   $('coin-chart-caption').textContent = 'Loading hourly prices…';
@@ -536,16 +620,41 @@ async function showCoin(coin) {
     if (state.details !== request) return;
     const candles = Object.entries(result).find(([key]) => key !== 'last')?.[1].slice(-25, -1);
     if (!candles || candles.length < 2) throw new Error('No price history');
-    drawPrice(candles, coin);
+    drawPrice(candles);
     chart.classList.remove('is-loading');
     reveal(chart, 3);
   } catch {
     if (state.details === request) {
-      chart.hidden = true;
+      $('coin-chart-frame').hidden = true;
       $('coin-chart-caption').textContent = 'Hourly prices are unavailable.';
     }
   }
 }
+
+const chart = $('coin-chart');
+function pointAtPointer(event) {
+  if (!chartData) return;
+  const rect = chart.getBoundingClientRect();
+  const relative = ((event.clientX - rect.left) / rect.width * chart.width - 24) / 850;
+  const index = Math.round(Math.max(0, Math.min(1, relative)) * (chartData.points.length - 1));
+  selectChartPoint(index);
+}
+chart.addEventListener('pointermove', pointAtPointer);
+chart.addEventListener('pointerdown', pointAtPointer);
+chart.addEventListener('pointerleave', (event) => { if (event.pointerType !== 'touch') selectChartPoint(-1); });
+chart.addEventListener('keydown', (event) => {
+  if (!chartData || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  const last = chartData.points.length - 1;
+  let index = chartData.active + (event.key === 'ArrowLeft' ? -1 : 1);
+  if (event.key === 'Home') index = 0;
+  if (event.key === 'End') index = last;
+  selectChartPoint(Math.max(0, Math.min(last, index)));
+});
+chart.addEventListener('blur', () => selectChartPoint(-1));
+document.addEventListener('dragstart', (event) => {
+  if (event.target.closest('.shell') && !event.target.closest('input, textarea, .database-scroll')) event.preventDefault();
+});
 
 $('refresh').addEventListener('click', refresh);
 $('timeframes').addEventListener('click', (event) => {
@@ -562,10 +671,12 @@ const pages = {
   sentiment: ['Market sentiment', 'Explore the balance of positive, neutral, and negative headlines.'],
   news: ['Market news', 'Read across publishers and filter the headlines by sentiment.'],
   sources: ['News sources', 'See which publisher feeds are reachable and how much they cover.'],
+  database: ['Database', 'Inspect the records collected by your local server.'],
 };
 function showPage() {
   const hash = window.location.hash.slice(1);
-  const page = Object.hasOwn(pages, hash) ? hash : 'overview';
+  const allowed = hash !== 'database' || localAccount.user?.role === 'admin';
+  const page = allowed && Object.hasOwn(pages, hash) ? hash : 'overview';
   const workspace = $('workspace');
   if (workspace.dataset.page === page) return;
   const switching = Boolean(workspace.dataset.page);
@@ -575,7 +686,7 @@ function showPage() {
   $('page-title').textContent = title;
   $('page-subtitle').textContent = subtitle;
   workspace.dataset.page = state.page;
-  $('timeframes').hidden = ['coins', 'sources'].includes(state.page);
+  $('timeframes').hidden = ['coins', 'sources', 'database'].includes(state.page);
   $('all-assets').hidden = state.page !== 'overview';
   $('all-news').hidden = state.page !== 'overview';
   for (const panel of document.querySelectorAll('[data-pages]')) panel.hidden = !panel.dataset.pages.split(' ').includes(state.page);
@@ -586,6 +697,7 @@ function showPage() {
     else link.removeAttribute('aria-current');
   }
   renderHeadlineData();
+  if (page === 'database') loadDatabase();
   window.scrollTo({ top: 0, behavior: 'instant' });
   if (switching) {
     reveal($('page-title'), 6, 260);
@@ -606,6 +718,151 @@ document.querySelectorAll('dialog').forEach((dialog) => {
   dialog.querySelector('.close').addEventListener('click', () => dialog.close());
 });
 $('coin-dialog').addEventListener('close', () => { state.details = null; });
+
+const localApi = '/api/local/';
+function renderAccount() {
+  const { available, user, setupRequired, mode } = localAccount;
+  $('open-account').hidden = !available;
+  $('open-account').textContent = user?.username ?? 'Account';
+  const admin = user?.role === 'admin';
+  $('admin-link').hidden = !admin;
+  $('account-database').hidden = !admin;
+  $('account-form').hidden = Boolean(user);
+  $('account-modes').hidden = Boolean(user);
+  $('account-actions').hidden = !user;
+  $('account-hint').textContent = user
+    ? `Signed in as ${user.username} · ${user.role}`
+    : setupRequired ? 'Use Set up admin to unlock the database.' : 'Accounts are stored on this computer.';
+  const buttons = $('account-modes').querySelectorAll('button');
+  for (const button of buttons) {
+    button.setAttribute('aria-pressed', button.dataset.action === mode);
+    if (button.dataset.action === 'setup') button.hidden = !setupRequired;
+  }
+  const setup = mode === 'setup';
+  $('setup-code').hidden = !setup;
+  $('setup-code').required = setup;
+  $('setup-label').hidden = !setup;
+  $('account-password').autocomplete = mode === 'login' ? 'current-password' : 'new-password';
+  $('account-submit').textContent = { login: 'Sign in', register: 'Create account', setup: 'Create administrator' }[mode];
+}
+
+async function connectAccount() {
+  try {
+    const response = await fetch(localApi + 'account/session', { signal: AbortSignal.timeout(1500) });
+    if (response.ok) Object.assign(localAccount, await response.json());
+  } catch { /* Hosted and disconnected previews can use the public dashboard. */ }
+  renderAccount();
+  showPage();
+}
+
+async function accountAction(action, data = {}) {
+  const response = await fetch(localApi + 'account/' + action, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error);
+  localAccount.user = result.user;
+  if (action === 'setup') localAccount.setupRequired = false;
+  localAccount.mode = 'login';
+  if (!localAccount.user) {
+    $('database-results').replaceChildren();
+    if (state.page === 'database') window.location.hash = 'overview';
+  }
+  renderAccount();
+  showPage();
+}
+
+$('open-account').addEventListener('click', () => {
+  $('account-result').textContent = '';
+  $('account-dialog').showModal();
+});
+$('account-modes').addEventListener('click', (event) => {
+  const mode = event.target.closest('[data-action]')?.dataset.action;
+  if (!mode) return;
+  localAccount.mode = mode;
+  $('account-result').textContent = '';
+  renderAccount();
+});
+$('account-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  $('account-submit').disabled = true;
+  $('account-result').textContent = '';
+  try {
+    await accountAction(localAccount.mode, Object.fromEntries(new FormData(form)));
+    form.reset();
+    $('account-dialog').close();
+  } catch (error) {
+    $('account-result').textContent = error.message || 'Could not reach the local server.';
+  } finally {
+    $('account-submit').disabled = false;
+  }
+});
+$('account-database').addEventListener('click', () => $('account-dialog').close());
+$('sign-out').addEventListener('click', async () => {
+  $('sign-out').disabled = true;
+  try {
+    await accountAction('logout');
+    $('account-dialog').close();
+  } catch (error) {
+    $('account-result').textContent = error.message || 'Could not sign out.';
+  } finally { $('sign-out').disabled = false; }
+});
+
+const tableDates = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'medium',
+});
+let databaseRequest = 0;
+async function loadDatabase() {
+  const request = ++databaseRequest;
+  const status = $('database-status');
+  const table = $('database-results');
+  const previous = $('database-prev');
+  const next = $('database-next');
+  status.textContent = 'Loading records…';
+  previous.disabled = next.disabled = true;
+  const params = new URLSearchParams({ table: $('database-table').value, page: localAccount.tablePage });
+  try {
+    const response = await fetch(localApi + 'database?' + params);
+    const { columns, rows, total, page, pageSize, error } = await response.json();
+    if (request !== databaseRequest || localAccount.user?.role !== 'admin') return;
+    if (!response.ok) throw new Error(error);
+    const header = node('thead');
+    const labels = node('tr');
+    for (const column of columns) {
+      const heading = node('th', '', column.replaceAll('_', ' ') + (column.endsWith('_at') ? ' (UTC)' : ''));
+      heading.scope = 'col';
+      labels.append(heading);
+    }
+    header.append(labels);
+    const content = node('tbody');
+    for (const record of rows) {
+      const row = node('tr');
+      for (const column of columns) {
+        const value = record[column];
+        const display = column.endsWith('_at') ? tableDates.format(value)
+          : column.endsWith('_usd') ? dollars(value)
+          : column === 'confidence' ? `${(value * 100).toFixed(1)}%` : String(value);
+        row.append(node('td', '', display));
+      }
+      content.append(row);
+    }
+    table.replaceChildren(header, content);
+    status.textContent = total ? `${(page - 1) * pageSize + 1}–${(page - 1) * pageSize + rows.length} of ${total} records` : 'No records yet.';
+    previous.disabled = page <= 1;
+    next.disabled = page * pageSize >= total;
+    reveal(table, 3);
+  } catch (error) {
+    if (request !== databaseRequest || localAccount.user?.role !== 'admin') return;
+    table.replaceChildren();
+    status.textContent = error.message || 'Could not load records.';
+  }
+}
+
+$('database-table').addEventListener('change', () => { localAccount.tablePage = 1; loadDatabase(); });
+$('reload-database').addEventListener('click', loadDatabase);
+$('database-prev').addEventListener('click', () => { localAccount.tablePage--; loadDatabase(); });
+$('database-next').addEventListener('click', () => { localAccount.tablePage++; loadDatabase(); });
 
 $('analysis-form').addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -654,6 +911,15 @@ $('analysis-form').addEventListener('submit', async (event) => {
   }
 });
 
+$('app-shell').inert = true;
 renderQuotes({ animate: false });
 showPage();
-refresh();
+function finishLoading() {
+  $('boot-screen').classList.add('is-ready');
+  $('app-shell').inert = false;
+}
+const bootTimeout = setTimeout(finishLoading, 4500);
+connectAccount().then(refresh).finally(() => {
+  clearTimeout(bootTimeout);
+  finishLoading();
+});

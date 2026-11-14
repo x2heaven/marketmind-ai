@@ -7,9 +7,9 @@ if errorlevel 1 (
     exit /b 1
 )
 
-node -e "process.exit(Number(process.versions.node.split('.')[0]) < 22 ? 1 : 0)" >nul 2>&1
+node -e "require('node:sqlite')" >nul 2>&1
 if errorlevel 1 (
-    echo MarketMind AI needs Node.js 22 or newer on PATH.
+    echo MarketMind AI needs Node.js 22.13 or newer on PATH.
     echo Install Node.js and open this file again.
     goto failed
 )
