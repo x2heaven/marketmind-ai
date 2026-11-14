@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080810">
+  <meta name="description" content="Track crypto prices and see how FinBERT reads the latest market headlines.">
+  <title>MarketMind AI — Crypto Sentiment Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./app.js" type="module"></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="MarketMind AI dashboard">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span>MarketMind <strong>AI</strong></span>
+      </a>
+      <nav aria-label="Dashboard sections">
+        <a href="#overview" class="is-active">Dashboard</a>
+        <a href="#markets">Coins</a>
+        <a href="#sentiment-title">Market Sentiment</a>
+        <a href="#news">Market News</a>
+      </nav>
+      <div class="live-tools">
+        <span class="live-status" id="live-status" role="status"><i></i><span>Connecting</span></span>
+        <button class="refresh" id="refresh" type="button" aria-label="Refresh market and news data" title="Refresh data">↻</button>
+      </div>
+      <button class="button search-trigger" id="open-analysis" type="button"><span aria-hidden="true">✦</span> Analyze headline</button>
+    </header>
+    <main id="overview">
+      <h1 class="sr-only">MarketMind AI dashboard</h1>
+      <div class="overview-grid">
+        <section class="panel fear" aria-labelledby="fear-title">
+          <div class="panel-heading"><div><h2 id="fear-title">Fear &amp; Greed in the Market Today</h2><p>Crypto Fear &amp; Greed Index</p></div></div>
+          <div class="fear-reading"><strong id="fear-value">—</strong><span>/ 100</span></div>
+          <div class="fear-label" id="fear-label">Loading index</div>
+          <div class="fear-track" aria-hidden="true"><span id="fear-marker" hidden></span></div>
+          <div class="scale"><span>FEAR</span><span>NEUTRAL</span><span>GREED</span></div>
+        </section>
+        <section class="panel gauge" aria-labelledby="sentiment-title">
+          <div class="panel-heading"><div><h2 id="sentiment-title">Market Sentiment</h2><p>Headline analysis by FinBERT</p></div>
+            <div class="segmented" id="timeframes" aria-label="News timeframe"><button type="button" data-hours="24" aria-pressed="true">24h</button><button type="button" data-hours="168" aria-pressed="false">7d</button></div>
+          </div>
+          <div class="gauge-wrap">
+            <canvas id="gauge-canvas" width="560" height="270" aria-hidden="true"></canvas>
+            <div class="gauge-reading"><strong id="sentiment-value">—</strong><span id="sentiment-label">Loading</span></div>
+          </div>
+          <p class="gauge-caption" id="sentiment-caption"></p>
+        </section>
+        <section class="panel assets" aria-labelledby="assets-title">
+          <div class="panel-heading"><div><h2 id="assets-title">Sentiment by Asset</h2><p>Based on headline mentions</p></div></div>
+          <div id="asset-list" class="asset-list"><p class="empty">Analyzing headlines…</p></div>
+        </section>
+      </div>
+      <div class="details-grid">
+        <section class="panel movers" id="markets" aria-labelledby="movers-title">
+          <div class="panel-heading"><div><h2 id="movers-title">Top Price Movers</h2><p>USD price change on Kraken</p></div><span class="period-label" title="Change since midnight UTC">TODAY</span></div>
+          <div class="bubbles" id="bubbles"><p class="empty">Loading prices…</p></div>
+          <div class="legend"><span><i></i> Gainers</span><span><i></i> Losers</span><span>Click a coin for details</span></div>
+        </section>
+        <section class="panel news" id="news" aria-labelledby="news-title">
+          <div class="panel-heading"><div><h2 id="news-title">Market News</h2><p id="news-caption">Latest headlines with AI sentiment</p></div><label class="filter"><span class="sr-only">Filter headlines by sentiment</span><select id="news-filter"><option value="all">All sentiment</option><option value="positive">Positive</option><option value="neutral">Neutral</option><option value="negative">Negative</option></select></label></div>
+          <div class="news-grid" id="news-grid"><p class="empty">Loading headlines…</p></div>
+          <button class="button more" id="more-news" type="button" hidden>Show more headlines</button>
+        </section>
+      </div>
+      <footer>
+        <span>MarketMind AI · Veritas AI Hackathon</span>
+        <span><a href="https://www.kraken.com/" target="_blank" rel="noopener noreferrer">Kraken</a><a href="https://alternative.me/crypto/fear-and-greed-index/" target="_blank" rel="noopener noreferrer">Alternative.me</a><a href="https://news.bitcoin.com/" target="_blank" rel="noopener noreferrer">Bitcoin.com News</a><a href="https://huggingface.co/ProsusAI/finbert" target="_blank" rel="noopener noreferrer">FinBERT</a></span>
+      </footer>
+    </main>
+  </div>
+  <dialog id="analysis-dialog" aria-labelledby="analysis-title">
+    <div class="dialog-heading"><div><h2 id="analysis-title">Analyze a headline</h2><p>FinBERT analyzes English-language financial text.</p></div><button class="close" type="button" aria-label="Close analysis">×</button></div>
+    <form id="analysis-form">
+      <label for="headline">Headline</label>
+      <textarea id="headline" maxlength="600" rows="4" placeholder="Paste a financial headline…" required></textarea>
+      <button class="button primary" type="submit">Analyze with FinBERT</button>
+    </form>
+    <div class="analysis-result" id="analysis-result" role="status"></div>
+  </dialog>
+  <dialog id="coin-dialog" aria-labelledby="coin-title">
+    <div class="dialog-heading"><div><h2 id="coin-title">Coin details</h2><p id="coin-summary"></p></div><button class="close" type="button" aria-label="Close coin details">×</button></div>
+    <canvas id="coin-chart" width="900" height="320" role="img" aria-label="Hourly closing price over the last 24 hours"></canvas>
+    <p id="coin-chart-caption" class="chart-caption" role="status"></p>
+    <h3>Related headlines</h3><div id="coin-news"></div>
+  </dialog>
+</body>
+</html>
