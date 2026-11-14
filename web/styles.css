@@ -407,6 +407,49 @@ img, .shell a { -webkit-user-drag: none; }
 .database-controls .filter { font-size: 12px; }
 .database-scroll { overflow-x: auto; margin-top: 14px; min-height: 74px; transition: opacity 170ms var(--motion-ease); }
 .database-scroll[aria-busy="true"] { opacity: .75; }
+.workspace-grid > .watch-panel { grid-column: 1 / -1; }
+.watch-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 14px; margin-top: 16px; }
+.watch-grid:empty { display: none; }
+#watch-status { margin-top: 14px; }
+#watch-status:empty, #coin-save-status:empty { display: none; }
+.watch-card, .coin-evidence, .market-context {
+  min-width: 0; border: 1px solid #aaa0ed38; border-radius: 13px;
+  padding: 14px; background: linear-gradient(135deg, #232143, #121127);
+}
+.watch-card { display: grid; align-content: start; gap: 10px; }
+.watch-card > p { font-size: 12px; }
+.watch-open { display: flex; align-items: center; gap: 8px; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; width: fit-content; }
+.watch-open:hover { color: #c9bdff; }
+.watch-price { display: flex; align-items: baseline; gap: 8px; font-size: 13px; }
+.watch-price > strong { font-size: 20px; }
+#coin-dialog { width: min(730px, calc(100% - 24px)); }
+.coin-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.favorite-button[aria-pressed="true"] { color: #ffda8e; border-color: #dfb76675; background: #90673832; }
+#coin-save-status { margin-top: 6px; color: var(--muted); }
+.chart-heading, .evidence-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 13px; }
+#coin-dialog :is(.chart-heading, .evidence-heading) h3 { margin: 0; }
+.coin-evidence .evidence-heading, .market-context .evidence-heading { margin-top: 0; }
+.coin-evidence, .market-context { margin-top: 14px; }
+.coin-evidence p, .market-context p { margin-top: 6px; }
+.coin-distribution { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+.distribution-item { background: #100e2390; border: 1px solid #b6a5ef29; border-radius: 8px; padding: 8px; min-width: 0; }
+.distribution-label { display: flex; flex-wrap: wrap; justify-content: space-between; font-size: 11px; gap: 4px; }
+.distribution-item .mini-meter { display: block; width: 100%; margin-top: 6px; }
+.evidence-news { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+#coin-news.evidence-news .story { margin: 0; }
+.timeline-key { display: grid; gap: 6px; margin-top: -8px; }
+.timeline-key:empty { display: none; }
+.timeline-event { display: flex; align-items: baseline; gap: 8px; color: #d7cffa; font-size: 12px; }
+.timeline-event:hover { color: white; text-decoration: underline; }
+.event-index { display: inline-grid; min-width: 20px; place-items: center; border: 1px solid currentColor; border-radius: 50%; }
+.coin-tooltip { max-width: 154px; left: clamp(77px, var(--point, 50%), calc(100% - 77px)); }
+#coin-tooltip-tone { display: block; color: #d3beda; margin-top: 3px; }
+.market-context { font-size: 13px; }
+.market-context .context-note { color: var(--muted); font-size: 11px; }
+@media (max-width: 560px) {
+  .evidence-news { grid-template-columns: 1fr; }
+  .market-context .tag { white-space: normal; text-align: right; }
+}
 #database-results { width: 100%; border-collapse: collapse; font-size: 12px; }
 #database-results :is(th, td) { border-bottom: 1px solid var(--line); padding: 9px 12px; text-align: left; }
 #database-results th { color: var(--muted); text-transform: capitalize; white-space: nowrap; }
@@ -414,4 +457,14 @@ img, .shell a { -webkit-user-drag: none; }
 #database-results tbody tr:hover td { background: #7771ff13; }
 @media (prefers-reduced-motion: reduce) {
   .boot-screen, .boot-progress span { transition: none; }
+}
+
+@media (hover: hover) and (pointer: fine) and (forced-colors: none) {
+  :root {
+    --dashboard-cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cpath%20d%3D%22M8%206.7%2024%2011.3q1.4.5.7%201.7l-7%203.1-3.1%207q-.7%201.3-1.5%200L7%208q-.5-1.6%201-1.3Z%22%20fill%3D%22none%22%20stroke%3D%22%23719bff%22%20stroke-opacity%3D%22.14%22%20stroke-width%3D%228%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cpath%20d%3D%22M8%206.7%2024%2011.3q1.4.5.7%201.7l-7%203.1-3.1%207q-.7%201.3-1.5%200L7%208q-.5-1.6%201-1.3Z%22%20fill%3D%22none%22%20stroke%3D%22%23719bff%22%20stroke-opacity%3D%22.43%22%20stroke-width%3D%224%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cpath%20d%3D%22M8%206.7%2024%2011.3q1.4.5.7%201.7l-7%203.1-3.1%207q-.7%201.3-1.5%200L7%208q-.5-1.6%201-1.3Z%22%20fill%3D%22%23080b13%22%20stroke%3D%22%23edf2ff%22%20stroke-width%3D%221.6%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E") 7 7, default;
+    --dashboard-pointer: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cpath%20d%3D%22M8%206.7%2024%2011.3q1.4.5.7%201.7l-7%203.1-3.1%207q-.7%201.3-1.5%200L7%208q-.5-1.6%201-1.3Z%22%20fill%3D%22none%22%20stroke%3D%22%23719bff%22%20stroke-opacity%3D%22.14%22%20stroke-width%3D%228%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cpath%20d%3D%22M8%206.7%2024%2011.3q1.4.5.7%201.7l-7%203.1-3.1%207q-.7%201.3-1.5%200L7%208q-.5-1.6%201-1.3Z%22%20fill%3D%22none%22%20stroke%3D%22%23719bff%22%20stroke-opacity%3D%22.43%22%20stroke-width%3D%224%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cpath%20d%3D%22M8%206.7%2024%2011.3q1.4.5.7%201.7l-7%203.1-3.1%207q-.7%201.3-1.5%200L7%208q-.5-1.6%201-1.3Z%22%20fill%3D%22%23080b13%22%20stroke%3D%22%23b4daff%22%20stroke-width%3D%221.6%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E") 7 7, pointer;
+  }
+  body, .bubbles { cursor: var(--dashboard-cursor); }
+  :is(a[href], button:enabled, select:enabled, .method summary) { cursor: var(--dashboard-pointer); }
+  :is(input:not([type="checkbox"]):not([type="radio"]), textarea) { cursor: text; }
 }

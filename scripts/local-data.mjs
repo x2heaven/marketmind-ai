@@ -48,6 +48,10 @@ export function openLocalData(origin, location = database) {
     CREATE TABLE IF NOT EXISTS sessions (
       token_hash TEXT PRIMARY KEY, account_id INTEGER NOT NULL REFERENCES accounts(id), expires_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS favorites (
+      account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+      symbol TEXT NOT NULL, PRIMARY KEY(account_id, symbol)
+    );
     CREATE TABLE IF NOT EXISTS headlines (
       url TEXT PRIMARY KEY, published_at INTEGER NOT NULL, publisher TEXT NOT NULL,
       title TEXT NOT NULL, sentiment TEXT NOT NULL, confidence REAL NOT NULL
@@ -84,6 +88,9 @@ export function openLocalData(origin, location = database) {
   const setEmail = db.prepare('UPDATE OR IGNORE accounts SET email = ? WHERE id = ? AND email IS NULL');
   const addSession = db.prepare('INSERT INTO sessions VALUES (?, ?, ?)');
   const deleteSession = db.prepare('DELETE FROM sessions WHERE token_hash = ?');
+  const listFavorites = db.prepare('SELECT symbol FROM favorites WHERE account_id = ? ORDER BY symbol');
+  const saveFavorite = db.prepare('INSERT OR IGNORE INTO favorites VALUES (?, ?)');
+  const removeFavorite = db.prepare('DELETE FROM favorites WHERE account_id = ? AND symbol = ?');
   const addHeadline = db.prepare('INSERT OR IGNORE INTO headlines VALUES (?, ?, ?, ?, ?, ?)');
   const addQuote = db.prepare('INSERT OR IGNORE INTO quotes VALUES (?, ?, ?)');
   const addCandle = db.prepare('INSERT OR IGNORE INTO candles VALUES (?, ?, ?, ?, ?, ?)');
@@ -104,6 +111,21 @@ export function openLocalData(origin, location = database) {
     return value ? hash(value) : '';
   };
   const userFor = (request) => selectSession.get(sessionKey(request), Date.now());
+
+  async function favorites(request) {
+    const user = userFor(request);
+    if (!user) return json({ error: 'Sign in to use your account watchlist.' }, 401);
+    if (request.method === 'POST') {
+      if (request.headers.get('origin') !== origin) return json({ error: 'Use the local site for this action.' }, 403);
+      const input = await request.json().catch(() => null);
+      if (!input || typeof input.symbol !== 'string' || !/^[A-Z0-9]{2,10}$/.test(input.symbol) || typeof input.saved !== 'boolean') {
+        return json({ error: 'Invalid watchlist request.' }, 400);
+      }
+      if (input.saved && listFavorites.all(user.id).length >= 30) return json({ error: 'Watchlist is full.' }, 409);
+      (input.saved ? saveFavorite : removeFavorite).run(user.id, input.symbol);
+    } else if (request.method !== 'GET') return json({ error: 'Method not allowed.' }, 405);
+    return json({ symbols: listFavorites.all(user.id).map(({ symbol }) => symbol) });
+  }
 
   function newSession(request, user) {
     const value = token();
@@ -190,7 +212,7 @@ export function openLocalData(origin, location = database) {
             const price = Number(series.c?.[0]);
             if (Number.isFinite(price)) addQuote.run(symbol, minute, price);
           } else if (Array.isArray(series)) {
-            for (const row of series.slice(-25, -1)) {
+            for (const row of series.slice(-169, -1)) {
               const [time, open, high, low, close] = row.slice(0, 5).map(Number);
               if ([time, open, high, low, close].every(Number.isFinite)) addCandle.run(pair, (time + 3600) * 1000, open, high, low, close);
             }
@@ -206,6 +228,7 @@ export function openLocalData(origin, location = database) {
     async route(request) {
       const url = new URL(request.url);
       if (url.pathname.startsWith('/api/local/account/')) return accounts(request, url.pathname.split('/').at(-1));
+      if (url.pathname === '/api/local/favorites') return favorites(request);
       if (url.pathname === '/api/local/market' && request.method === 'GET') return market(url);
       if (url.pathname === '/api/local/database' && request.method === 'GET') {
         const user = userFor(request);

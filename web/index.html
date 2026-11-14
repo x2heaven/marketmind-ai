@@ -33,6 +33,7 @@
         <a href="#coins">Coins</a>
         <a href="#sentiment">Market Sentiment</a>
         <a href="#news">Market News</a>
+        <a href="#watchlist">Watchlist</a>
         <a href="#sources">Sources</a>
         <a href="#database" id="admin-link" hidden>Database</a>
       </nav>
@@ -105,6 +106,11 @@
           <div class="panel-heading"><div><h2 id="sources-title">Publisher Coverage</h2><p id="source-caption">Checking feeds…</p></div></div>
           <div id="source-list" class="source-grid"></div>
         </section>
+        <section class="panel watch-panel" aria-labelledby="watch-title" data-pages="watchlist" hidden>
+          <div class="panel-heading"><div><h2 id="watch-title">Saved coins</h2><p id="watch-storage"></p></div><a class="text-link" href="#coins">Browse coins →</a></div>
+          <div id="watch-grid" class="watch-grid"></div>
+          <p class="empty" id="watch-status" role="status"></p>
+        </section>
         <section class="panel database-panel" aria-labelledby="database-title" data-pages="database" hidden>
           <div class="panel-heading"><div><h2 id="database-title">Local database</h2><p id="database-description">Account details and registration dates.</p></div><button class="button" type="button" id="reload-database">Refresh</button></div>
           <div class="database-controls">
@@ -162,23 +168,35 @@
     <p class="empty" id="account-result" role="status"></p>
   </dialog>
   <dialog id="analysis-dialog" aria-labelledby="analysis-title">
-    <div class="dialog-heading"><div><h2 id="analysis-title">Analyze a headline</h2><p>Compare the live headline model with ProsusAI FinBERT.</p></div><button class="close" type="button" aria-label="Close analysis">×</button></div>
+    <div class="dialog-heading"><div><h2 id="analysis-title">Analyze a headline</h2><p>See text tone and a separate market-context check.</p></div><button class="close" type="button" aria-label="Close analysis">×</button></div>
     <form id="analysis-form">
       <label for="headline">Headline</label>
       <textarea id="headline" maxlength="600" rows="4" placeholder="Paste a financial headline…" required></textarea>
       <div class="analysis-actions"><button class="button primary" type="submit" value="fast">Quick analysis</button><button class="button" type="submit" value="finbert">Run FinBERT</button></div>
     </form>
     <div class="analysis-result" id="analysis-result" role="status"></div>
+    <section class="market-context" id="analysis-context" aria-labelledby="context-title" hidden>
+      <div class="evidence-heading"><h3 id="context-title">Market context</h3><span class="tag" id="context-badge"></span></div>
+      <p id="context-copy"></p>
+      <p class="context-note">Rule-based check of the submitted text. Verify the report with reliable sources. Price direction is unknown.</p>
+    </section>
   </dialog>
   <dialog id="coin-dialog" aria-labelledby="coin-title">
-    <div class="dialog-heading"><div><h2 id="coin-title">Coin details</h2><p id="coin-summary"></p></div><button class="close" type="button" aria-label="Close coin details">×</button></div>
+    <div class="dialog-heading"><div><h2 id="coin-title">Coin details</h2><p id="coin-summary"></p></div><div class="coin-actions"><button id="save-coin" class="button favorite-button" type="button" aria-pressed="false">☆ Watch</button><button class="close" type="button" aria-label="Close coin details">×</button></div></div>
+    <p class="empty" id="coin-save-status" role="status"></p>
+    <div class="chart-heading"><h3>Price &amp; news sentiment</h3><span class="period-label" id="coin-period"></span></div>
     <div class="chart-frame" id="coin-chart-frame">
-      <canvas id="coin-chart" width="900" height="320" tabindex="0" aria-label="Hourly closing prices. Use the left and right arrow keys to explore." aria-describedby="coin-chart-caption"></canvas>
-      <div id="coin-tooltip" class="coin-tooltip" aria-live="polite" hidden><time id="coin-tooltip-time"></time><strong id="coin-tooltip-price"></strong></div>
+      <canvas id="coin-chart" width="900" height="435" tabindex="0" aria-label="Hourly prices and news sentiment. Use the left and right arrow keys to explore." aria-describedby="coin-chart-caption"></canvas>
+      <div id="coin-tooltip" class="coin-tooltip" aria-live="polite" hidden><time id="coin-tooltip-time"></time><strong id="coin-tooltip-price"></strong><span id="coin-tooltip-tone"></span></div>
     </div>
     <p id="coin-chart-caption" class="chart-caption" role="status"></p>
-    <p id="coin-sentiment" class="chart-caption"></p>
-    <h3>Related headlines</h3><div id="coin-news"></div>
+    <div class="timeline-key" id="coin-key-events"></div>
+    <section class="coin-evidence" aria-labelledby="coin-evidence-title">
+      <div class="evidence-heading"><h3 id="coin-evidence-title">Why this score?</h3><strong id="coin-sentiment"></strong></div>
+      <p id="coin-evidence-note" class="empty"></p>
+      <div id="coin-distribution" class="coin-distribution"></div>
+      <div id="coin-news" class="evidence-news"></div>
+    </section>
   </dialog>
 </body>
 </html>

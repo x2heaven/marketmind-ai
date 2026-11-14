@@ -23,6 +23,8 @@ New members and administrators provide an email and confirm their password. Exis
 
 Headlines and quotes are collected when the dashboard fetches them. Hourly candles are collected when you open a coin. The local accounts, session data, and records stay with this SQLite file. The hosted dashboard uses Sites access controls. The `data/` folder is excluded from Git.
 
+Use **Watch** in a coin dialog to save that coin to **Watchlist**. Signed-in local users get a separate SQLite watchlist per account. The hosted dashboard and local guests save their watchlist in the current browser.
+
 ## Headline analysis
 
 The Worker fetches RSS and Atom feeds in parallel, deduplicates headlines and URLs, and caches the combined response for three minutes. It classifies headlines on the server using a logistic regression model trained on the [Twitter Financial News Sentiment dataset](https://huggingface.co/datasets/zeroshot/twitter-financial-news-sentiment) and supplementary crypto examples. Its word and two-word features are exported to `worker/model.json`. The model can be reproduced using `scripts/train-model.py`, scikit-learn, and the dataset's training and validation CSVs.
@@ -32,6 +34,8 @@ Quick analysis in the headline dialog uses the same Worker classifier. The **Run
 The sentiment index averages `50 + 50 × (P(positive) − P(negative))` across the selected period. Asset scores use headlines mentioning the coin by name, ticker, or a common alias. The article count is the sample size. Assets with zero matched headlines display **No coverage**. Kraken price moves are measured from midnight UTC.
 
 AI News Pulse uses the balance of positive and negative model labels across all headlines. AI Market Brief links to the highest-confidence positive and negative articles. Asset Sentiment Shifts compares model scores from the two halves of the selected period when both halves have at least three mentions of a coin.
+
+Coin details show which headlines support the score, with a price chart and hourly sentiment sharing the same time axis. Numbered markers link to high-confidence positive and negative headlines at their publication times. Empty sentiment intervals mean there were no matching headlines. The headline analyzer also flags possible market relevance using text rules. Relevance, sentiment, and the observed price chart do not establish causation or predict a trade outcome.
 
 ## Validation
 
