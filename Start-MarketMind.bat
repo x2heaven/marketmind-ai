@@ -7,12 +7,8 @@ if errorlevel 1 (
     exit /b 1
 )
 
-node -e "require('node:sqlite')" >nul 2>&1
-if errorlevel 1 (
-    echo MarketMind AI needs Node.js 22.13 or newer on PATH.
-    echo Install Node.js and open this file again.
-    goto failed
-)
+call "%~dp0Requirements.bat" --quick
+if errorlevel 1 goto failed
 
 echo Building MarketMind AI...
 node scripts\build.mjs

@@ -4,7 +4,7 @@ MarketMind AI tracks cryptocurrency prices from Kraken and analyzes English-lang
 
 ## Run locally
 
-Requires Node.js 22.13 or newer with built-in SQLite. On Windows, extract the entire archive and double-click `Start-MarketMind.bat` in the project folder. It builds and starts the site, then opens it in your default browser. Keep the command window open while using the site. To stop the server, close the window or press Ctrl+C.
+On Windows, extract the entire archive and double-click `Requirements.bat` to check your setup. See [Requirements](REQUIREMENTS.md) for what is needed. Then double-click `Start-MarketMind.bat` to build and open the site. Keep the command window open while using the site. To stop the server, close the window or press Ctrl+C.
 
 To start it manually from the project folder, run:
 

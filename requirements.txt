@@ -1,0 +1,2 @@
+# Optional. Used only for retraining the bundled sentiment model.
+scikit-learn==1.9.1
